@@ -1,13 +1,18 @@
 package impl
 
 import (
+	"crypto"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"math/rand"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"go.dedis.ch/cs438/peer"
+	"go.dedis.ch/cs438/storage"
 	"go.dedis.ch/cs438/transport"
 	"go.dedis.ch/cs438/types"
 	"golang.org/x/xerrors"
@@ -297,7 +302,7 @@ func (n *node) ExecSearchRequestMessage(msg types.Message, pkt transport.Packet)
 		return xerrors.Errorf("wrong type: %T", msg)
 	}
 	// Peers need to detect if they receive a duplicate search request and ignore it.
-	// Each request contains a unique identifier that allows peers to identify them.
+	// Each request contains a unique identifier that allows peers to identify then.
 	if n.alreadySearched(searchRequestMessage.RequestID) {
 		return nil
 	}
@@ -390,67 +395,287 @@ func (n *node) ExecSearchReplyMessage(msg types.Message, pkt transport.Packet) e
 }
 
 func (n *node) ExecPaxosPrepareMessage(msg types.Message, pkt transport.Packet) error {
-	paxosPrepareMessage, ok := msg.(*types.PaxosPrepareMessage)
-	if !ok {
-		return xerrors.Errorf("wrong type: %T", msg)
-	}
-	err := n.paxos.acceptor.promise(*paxosPrepareMessage, n)
-	if err != nil {
-		return xerrors.Errorf("failed promise: %v", err)
-	}
-	return nil
-}
-
-func (n *node) ExecPaxosPromiseMessage(msg types.Message, pkt transport.Packet) error {
-	paxosPromiseMessage, ok := msg.(*types.PaxosPromiseMessage)
+	// cast the message to its actual type. You assume it is the right type.
+	prepareMsg, ok := msg.(*types.PaxosPrepareMessage)
 	if !ok {
 		return xerrors.Errorf("wrong type: %T", msg)
 	}
 
-	n.paxos.collectPromise(*paxosPromiseMessage, n)
-	return nil
-}
-
-func (n *node) ExecPaxosProposeMessage(msg types.Message, pkt transport.Packet) error {
-	paxosProposeMessage, ok := msg.(*types.PaxosProposeMessage)
-	if !ok {
-		return xerrors.Errorf("wrong type: %T", msg)
+	if prepareMsg.Step != n.paxos.Step {
+		return nil
 	}
 
-	err := n.paxos.acceptor.accept(*paxosProposeMessage, n)
-	if err != nil {
-		return xerrors.Errorf("failed accept: %v", err)
-	}
-	return nil
-}
-
-func (n *node) ExecPaxosAcceptMessage(msg types.Message, pkt transport.Packet) error {
-	paxosAcceptMessage, ok := msg.(*types.PaxosAcceptMessage)
-	if !ok {
-		return xerrors.Errorf("wrong type: %T", msg)
+	if prepareMsg.ID <= n.paxos.MaxID {
+		return nil
 	}
 
-	if n.paxos.status.instanceRunning() && n.paxos.proposer.phase.get() == 2 {
-		n.paxos.proposer.collectAccept(*paxosAcceptMessage, n)
+	var promiseMsg types.PaxosPromiseMessage
+	if n.paxos.accepter.AcceptStatus.status {
+		promiseMsg = types.PaxosPromiseMessage{
+			Step: prepareMsg.Step,
+			ID:   prepareMsg.ID,
+
+			AcceptedID:    n.paxos.accepter.AcceptStatus.acceptedID,
+			AcceptedValue: &(n.paxos.accepter.AcceptStatus.acceptedValue),
+		}
 	} else {
-		err := n.paxos.collectAccept(*paxosAcceptMessage, n)
+		promiseMsg = types.PaxosPromiseMessage{
+			Step: prepareMsg.Step,
+			ID:   prepareMsg.ID,
+		}
+	}
+
+	msgToBroadcast, err := n.conf.MessageRegistry.MarshalMessage(promiseMsg)
+	if err != nil {
+		return err
+	}
+
+	n.paxos.MaxID = prepareMsg.ID
+	recipients := make(map[string]struct{})
+	recipients[prepareMsg.Source] = struct{}{}
+	promise := types.PrivateMessage{
+		Recipients: recipients,
+		Msg:        &msgToBroadcast,
+	}
+
+	promiseMsgMarsh, err := n.conf.MessageRegistry.MarshalMessage(promise)
+	if err != nil {
+		fmt.Println(err)
+
+	} else {
+		err = n.Broadcast(promiseMsgMarsh)
 		if err != nil {
-			return xerrors.Errorf("failed to process paxos accept message: %v", err)
+			fmt.Println(err)
 		}
 	}
 
 	return nil
 }
 
-func (n *node) ExecTLCMessage(msg types.Message, pkt transport.Packet) error {
-	tlcMessage, ok := msg.(*types.TLCMessage)
+func (n *node) ExecPaxosPromiseMessage(msg types.Message, pkt transport.Packet) error {
+	// cast the message to its actual type. You assume it is the right type.
+	promiseMsg, ok := msg.(*types.PaxosPromiseMessage)
+	if !ok {
+		return xerrors.Errorf("wrong type: %T", msg)
+	}
+	if promiseMsg.Step != n.paxos.Step {
+		return nil
+	}
+	n.paxos.proposer.PhaseLock.Lock()
+	defer n.paxos.proposer.PhaseLock.Unlock()
+
+	if n.paxos.proposer.Phase != 1 {
+		return nil
+	}
+
+	n.paxos.proposer.PromisesLock.Lock()
+	defer n.paxos.proposer.PromisesLock.Unlock()
+	n.paxos.proposer.PromisesReceived++
+
+	if promiseMsg.AcceptedValue != nil {
+		if promiseMsg.AcceptedID >= n.paxos.proposer.AcceptedValue.acceptedID {
+			n.paxos.proposer.AcceptedValue = PaxosAcceptStatus{
+				acceptedID:    promiseMsg.AcceptedID,
+				acceptedValue: *promiseMsg.AcceptedValue,
+			}
+		}
+	}
+
+	if n.paxos.proposer.PromisesReceived >= n.conf.PaxosThreshold(n.conf.TotalPeers) {
+		n.paxos.proposer.Phase = 2
+		n.paxos.proposer.CountLock.Lock()
+		n.paxos.proposer.AcceptCount = make(map[string]uint)
+		n.paxos.proposer.CountLock.Unlock()
+		propose := types.PaxosProposeMessage{
+			Step:  n.paxos.Step,
+			ID:    n.paxos.proposer.AcceptedValue.acceptedID,
+			Value: n.paxos.proposer.AcceptedValue.acceptedValue,
+		}
+
+		proposeMsg, err := n.conf.MessageRegistry.MarshalMessage(propose)
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			err = n.Broadcast(proposeMsg)
+			if err != nil {
+				fmt.Println(err)
+			} else {
+				//n.RetryTag(propose.Value.Filename, propose.Value.Metahash)
+			}
+
+		}
+	}
+	return nil
+}
+
+func (n *node) ExecPaxosProposeMessage(msg types.Message, pkt transport.Packet) error {
+	// cast the message to its actual type. You assume it is the right type.
+	proposeMsg, ok := msg.(*types.PaxosProposeMessage)
+	if !ok {
+		return xerrors.Errorf("wrong type: %T", msg)
+	}
+	if proposeMsg.Step != n.paxos.Step {
+		return nil
+	}
+
+	if proposeMsg.ID < n.paxos.MaxID {
+		return nil
+	}
+
+	var accept types.PaxosAcceptMessage
+	if proposeMsg.ID != n.paxos.MaxID {
+		return nil
+	} else {
+		accept = types.PaxosAcceptMessage{
+			Step:  proposeMsg.Step,
+			ID:    proposeMsg.ID,
+			Value: proposeMsg.Value,
+		}
+
+		n.paxos.accepter.AcceptStatus = PaxosAcceptStatus{
+			status:        true,
+			acceptedID:    proposeMsg.ID,
+			acceptedValue: proposeMsg.Value,
+		}
+	}
+
+	acceptMsg, err := n.conf.MessageRegistry.MarshalMessage(accept)
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		err = n.Broadcast(acceptMsg)
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
+	return nil
+}
+
+func (n *node) ExecPaxosAcceptMessage(msg types.Message, pkt transport.Packet) error {
+	// cast the message to its actual type. You assume it is the right type.
+	acceptMsg, ok := msg.(*types.PaxosAcceptMessage)
 	if !ok {
 		return xerrors.Errorf("wrong type: %T", msg)
 	}
 
-	err := n.paxos.collectTLC(*tlcMessage, n)
-	if err != nil {
-		return xerrors.Errorf("failed to process TLC message: %v", err)
+	if acceptMsg.Step != n.paxos.Step {
+		return nil
 	}
+	n.paxos.proposer.MsgsPreparedMutex.Lock()
+	_, ok = n.paxos.proposer.MsgsPrepared[acceptMsg.Value.UniqID]
+	n.paxos.proposer.MsgsPreparedMutex.Unlock()
+	if n.paxos.proposer.Phase != 2 && ok {
+		return nil
+	}
+	n.paxos.proposer.CountLock.Lock()
+
+	_, ok = n.paxos.proposer.AcceptCount[acceptMsg.Value.UniqID]
+	if !ok {
+		n.paxos.proposer.AcceptCount[acceptMsg.Value.UniqID] = 1
+	} else {
+		n.paxos.proposer.AcceptCount[acceptMsg.Value.UniqID]++
+	}
+
+	if n.paxos.proposer.AcceptCount[acceptMsg.Value.UniqID] >= uint(n.conf.PaxosThreshold(n.conf.TotalPeers)) {
+		n.paxos.proposer.CountLock.Unlock()
+		consensusValue := acceptMsg.Value
+		var prev []byte
+		if n.paxos.Step == 0 {
+			prev = make([]byte, 32)
+		} else {
+			blockStore := n.conf.Storage.GetBlockchainStore()
+			lastBlock := hex.EncodeToString(blockStore.Get(storage.LastBlockKey))
+			prevLastBlock := blockStore.Get(string(lastBlock))
+			var unmarshaledBlock types.BlockchainBlock
+			unmarshaledBlock.Unmarshal(prevLastBlock)
+			prev = unmarshaledBlock.Hash
+		}
+		toHash := []byte(strconv.Itoa(int(acceptMsg.Step)))
+		toHash = append(toHash, []byte(consensusValue.UniqID)...)
+		toHash = append(toHash, []byte(consensusValue.Filename)...)
+		toHash = append(toHash, []byte(consensusValue.Metahash)...)
+		toHash = append(toHash, prev...)
+
+		h := crypto.SHA256.New()
+		h.Write([]byte(toHash))
+		hash := h.Sum(nil)
+
+		tlc := types.TLCMessage{
+			Step: acceptMsg.Step,
+			Block: types.BlockchainBlock{
+				Index:    acceptMsg.Step,
+				Hash:     hash,
+				Value:    consensusValue,
+				PrevHash: prev,
+			},
+		}
+		msg, err := n.conf.MessageRegistry.MarshalMessage(tlc)
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			n.paxos.HasBroadcastedTLC[n.paxos.Step] = true
+			err = n.Broadcast(msg)
+			if err != nil {
+				fmt.Println(err)
+			}
+		}
+	} else {
+		n.paxos.proposer.CountLock.Unlock()
+	}
+	return nil
+}
+
+func (n *node) ExecTLCMessage(msg types.Message, pkt transport.Packet) error {
+	// cast the message to its actual type. You assume it is the right type.
+	tlc, ok := msg.(*types.TLCMessage)
+	if !ok {
+		return xerrors.Errorf("wrong type: %T", msg)
+	}
+	_, ok = n.paxos.blocksReceived[tlc.Step]
+	if !ok {
+		n.paxos.blocksReceived[tlc.Step] = tlc.Block
+	}
+	_, ok = n.paxos.TLCMessagesReceived[tlc.Step]
+	if !ok {
+		n.paxos.TLCMessagesReceived[tlc.Step] = 1
+	} else {
+		n.paxos.TLCMessagesReceived[tlc.Step]++
+	}
+	if n.paxos.TLCMessagesReceived[n.paxos.Step] >= uint(n.conf.PaxosThreshold(n.conf.TotalPeers)) {
+		err := n.AddBlock(tlc.Block)
+		if err != nil {
+			fmt.Println(err)
+			return err
+		}
+		store := n.conf.Storage.GetNamingStore()
+		store.Set(tlc.Block.Value.Filename, []byte(tlc.Block.Value.Metahash))
+		if !n.paxos.HasBroadcastedTLC[tlc.Step] {
+			n.paxos.HasBroadcastedTLC[tlc.Step] = true
+			msg, err := n.conf.MessageRegistry.MarshalMessage(tlc)
+			if err != nil {
+				fmt.Println(err)
+
+			} else {
+				n.Broadcast(msg)
+			}
+		}
+		n.paxos.proposer.MsgsPreparedMutex.Lock()
+		_, ok := n.paxos.proposer.MsgsPrepared[tlc.Block.Value.UniqID]
+		n.paxos.proposer.MsgsPreparedMutex.Unlock()
+		if ok {
+			go func() {
+				n.paxos.proposer.TagIsDone <- true
+			}()
+		}
+		n.IncrementStep()
+		if n.paxos.TLCMessagesReceived[n.paxos.Step] >= uint(n.conf.PaxosThreshold(n.conf.TotalPeers)) {
+			err := n.TLCCatchup()
+			if err != nil {
+				fmt.Println(err)
+				return err
+			}
+		}
+	}
+
 	return nil
 }

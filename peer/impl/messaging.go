@@ -59,7 +59,6 @@ func (n *node) Unicast(dest string, msg transport.Message) error {
 func (n *node) Broadcast(msg transport.Message) error {
 
 	selfAddr := n.conf.Socket.GetAddress()
-
 	// Create RumorsMessage pkt and send it
 	seq := n.rumorSeq.incr()
 	rumor := types.Rumor{
@@ -71,7 +70,6 @@ func (n *node) Broadcast(msg transport.Message) error {
 	rumors[0] = rumor
 	n.rumorsCollection.addRumors(rumors)
 	rumorsMessage := types.RumorsMessage{Rumors: rumors}
-
 	rumorsTransport, err := n.conf.MessageRegistry.MarshalMessage(&rumorsMessage)
 	if err != nil {
 		return xerrors.Errorf("failed to marshald rumors message: %v", err)
@@ -91,7 +89,6 @@ func (n *node) Broadcast(msg transport.Message) error {
 		}
 		go n.waitForAck(neighborPkt)
 	}
-
 	// Process the message for oneself
 	selfHeader := transport.NewHeader(selfAddr, selfAddr, selfAddr, 0)
 	selfPkt := transport.Packet{

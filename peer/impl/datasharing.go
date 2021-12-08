@@ -168,40 +168,56 @@ func (n *node) waitForDataReply(pkt transport.Packet, requestID string) ([]byte,
 }
 
 func (n *node) Tag(name string, mh string) error {
-
-	naming := n.conf.Storage.GetNamingStore()
-	if n.conf.TotalPeers > 1 {
-		// Propose until our name is accepted or the name is alread in store
-		for {
-			if naming.Get(name) != nil {
-				return xerrors.Errorf("name already in the name store")
-			}
-
-			// propose return true if the value was proposed
-			// => if we receive false we are already proposing
-			hasProposed, err := n.paxos.tryPropose(name, mh, n)
-			if err != nil {
-				return xerrors.Errorf("failed while trying to propose: %v", err)
-			}
-
-			result := n.paxos.waitInstanceResult()
-
-			// If we have proposed, we verify if our result was used
-			if hasProposed {
-				if result.Filename == name && result.Metahash == mh {
-					// Probably already done when collecting TLC
-					// naming.Set(name, []byte(mh))
-					return nil
-				}
-			}
-		}
-	} else {
-		if naming.Get(name) != nil {
-			return xerrors.Errorf("name already in the name store")
-		}
-		naming.Set(name, []byte(mh))
+	store := n.conf.Storage.GetNamingStore()
+	check := store.Get(name)
+	if check != nil {
+		return xerrors.Errorf("name already exists")
 	}
+	if n.conf.TotalPeers <= 1 {
+		store.Set(name, []byte(mh))
+	} else {
+		n.paxos.proposer.MsgsPreparedMutex.Lock()
+		id := n.conf.PaxosID + n.conf.TotalPeers*uint(len(n.paxos.proposer.MsgsPrepared))
+		n.paxos.proposer.MsgsPreparedMutex.Unlock()
+		prepareMsg := types.PaxosPrepareMessage{
+			Step:   0,
+			ID:     id,
+			Source: n.conf.Socket.GetAddress(),
+		}
 
+		prepare, err := n.conf.MessageRegistry.MarshalMessage(prepareMsg)
+		if err != nil {
+			return xerrors.Errorf("failed to marshall prepare message")
+		}
+		n.paxos.proposer.PhaseLock.Lock()
+		n.paxos.proposer.Phase = 1
+		n.paxos.proposer.PhaseLock.Unlock()
+		n.paxos.proposer.PromisesLock.Lock()
+		n.paxos.proposer.PromisesReceived = 0
+		n.paxos.proposer.PromisesLock.Unlock()
+		n.paxos.proposer.CountLock.Lock()
+		n.paxos.proposer.AcceptCount = make(map[string]uint)
+		n.paxos.proposer.CountLock.Unlock()
+		uniqId := xid.New().String()
+		n.paxos.proposer.AcceptedValue = PaxosAcceptStatus{
+			acceptedID: id,
+			acceptedValue: types.PaxosValue{
+				UniqID:   uniqId,
+				Filename: name,
+				Metahash: mh,
+			},
+		}
+
+		n.paxos.prepareMsg <- prepare
+		n.paxos.proposer.MsgsPreparedMutex.Lock()
+		n.paxos.proposer.MsgsPrepared[uniqId] = struct{}{}
+		n.paxos.proposer.MsgsPreparedMutex.Unlock()
+		//fmt.Println("retry tag 1")
+		n.RetryTag(name, mh)
+		<-n.paxos.proposer.TagIsDone
+
+		return err
+	}
 	return nil
 }
 

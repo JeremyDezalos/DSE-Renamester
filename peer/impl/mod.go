@@ -2,6 +2,7 @@ package impl
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -35,8 +36,28 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 
 	// Add ourself to the list of peers
 	n.AddPeer(conf.Socket.GetAddress())
-	n.paxos = initMultiPaxos(&n)
 
+	proposer := PaxosProposer{
+		Retry:        make(chan types.PaxosValue),
+		AcceptCount:  make(map[string]uint),
+		MsgsPrepared: make(map[string]struct{}),
+		TagIsDone:    make(chan bool),
+	}
+
+	accepter := PaxosAccepter{
+		AcceptStatus: PaxosAcceptStatus{status: false},
+	}
+
+	n.paxos = Paxos{
+		proposer:            &proposer,
+		accepter:            accepter,
+		Step:                0,
+		MaxID:               0,
+		TLCMessagesReceived: make(map[uint]uint),
+		HasBroadcastedTLC:   make(map[uint]bool),
+		blocksReceived:      make(map[uint]types.BlockchainBlock),
+		prepareMsg:          make(chan transport.Message),
+	}
 	return &n
 }
 
@@ -48,9 +69,9 @@ type node struct {
 	// You probably want to keep the peer.Configuration on this struct:
 	conf peer.Configuration
 	*messaging
-	paxos   *multiPaxos
 	started bool
 	stoped  chan struct{}
+	paxos   Paxos
 }
 
 type safeCounter struct {
@@ -133,9 +154,47 @@ func (n *node) Start() error {
 			select {
 			case <-n.stoped:
 				return
+			case prepare := <-n.paxos.prepareMsg:
+				n.Broadcast(prepare)
+			case retry := <-n.paxos.proposer.Retry:
+				n.paxos.proposer.MsgsPreparedMutex.Lock()
+				id := uint(len(n.paxos.proposer.MsgsPrepared))*n.conf.TotalPeers + n.conf.PaxosID
+				n.paxos.proposer.MsgsPreparedMutex.Unlock()
 
+				prepare := types.PaxosPrepareMessage{
+					Step:   n.paxos.Step,
+					ID:     id,
+					Source: n.conf.Socket.GetAddress(),
+				}
+				msg, err := n.conf.MessageRegistry.MarshalMessage(prepare)
+				if err != nil {
+					continue
+				}
+				n.paxos.proposer.PhaseLock.Lock()
+				n.paxos.proposer.Phase = 1
+				n.paxos.proposer.PhaseLock.Unlock()
+				n.paxos.proposer.PromisesLock.Lock()
+				n.paxos.proposer.PromisesReceived = 0
+				n.paxos.proposer.PromisesLock.Unlock()
+				n.paxos.proposer.AcceptedValue = PaxosAcceptStatus{
+					acceptedID: id,
+					acceptedValue: types.PaxosValue{
+						UniqID:   retry.UniqID,
+						Filename: retry.Filename,
+						Metahash: retry.Metahash,
+					},
+				}
+				n.paxos.proposer.MsgsPreparedMutex.Lock()
+				n.paxos.proposer.MsgsPrepared[retry.UniqID] = struct{}{}
+				n.paxos.proposer.MsgsPreparedMutex.Unlock()
+
+				err = n.Broadcast(msg)
+				n.RetryTag(retry.Filename, retry.Metahash)
+				if err != nil {
+					fmt.Println(err)
+				}
 			default:
-				pkt, err := n.conf.Socket.Recv(time.Second * 1)
+				pkt, err := n.conf.Socket.Recv(time.Second * 1 / 5)
 				if errors.Is(err, transport.TimeoutErr(0)) {
 					log.Warn().Msgf("failed to receive packet (timeout): %v", err)
 					continue
