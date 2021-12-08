@@ -674,6 +674,7 @@ func ValidateBlockchain(t *testing.T, store storage.Store) {
 
 	for lastBlockHashHex != endBlockHasHex {
 		lastBlockBuf := store.Get(string(lastBlockHashHex))
+
 		err := block.Unmarshal(lastBlockBuf)
 		require.NoError(t, err)
 

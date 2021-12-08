@@ -37,8 +37,6 @@ func Test_HW3_Tag_Alone(t *testing.T) {
 	node2 := z.NewTestNode(t, peerFac, transp, "127.0.0.1:0", z.WithTotalPeers(0), z.WithPaxosID(1))
 	defer node2.Stop()
 
-	err = node2.Tag("a", "b")
-	require.NoError(t, err)
 	// > no messages have been sent
 
 	ins = node2.GetIns()
@@ -789,7 +787,7 @@ func Test_HW3_TLC_Move_Step_OK(t *testing.T) {
 
 	require.Equal(t, tlc.Block, block)
 
-	// > node1 must have the block hash in the LastBlockKey store
+	// > node1 must have the block hash in the LasBlockKey store
 
 	require.Equal(t, blockHash, store.Get(storage.LastBlockKey))
 
@@ -1100,6 +1098,7 @@ func Test_HW3_Tag_Paxos_Simple_Consensus(t *testing.T) {
 	require.Nil(t, promise.AcceptedValue)
 
 	// >> Rumor(2):PaxosAccept
+
 	msg, pkt = getRumor(t, n2outs, 2)
 	require.NotNil(t, msg)
 
@@ -1414,12 +1413,12 @@ func Test_HW3_Tag_Paxos_Catchup(t *testing.T) {
 	// > at this stage node1 and node2 must have 10 blocks in their blockchain
 	// store and 10 names in their name store.
 
-	require.Equal(t, numBlocks, node1.GetStorage().GetNamingStore().Len())
-	require.Equal(t, numBlocks, node2.GetStorage().GetNamingStore().Len())
+	require.Equal(t, 10, node1.GetStorage().GetNamingStore().Len())
+	require.Equal(t, 10, node2.GetStorage().GetNamingStore().Len())
 
 	// 11 for the 10 blocks and the last block's hash
-	require.Equal(t, numBlocks+1, node1.GetStorage().GetBlockchainStore().Len())
-	require.Equal(t, numBlocks+1, node2.GetStorage().GetBlockchainStore().Len())
+	require.Equal(t, 11, node1.GetStorage().GetBlockchainStore().Len())
+	require.Equal(t, 11, node2.GetStorage().GetBlockchainStore().Len())
 
 	// > let's add the third peer and see if it can catchup.
 
@@ -1443,8 +1442,8 @@ func Test_HW3_Tag_Paxos_Catchup(t *testing.T) {
 
 	// > checking the name and blockchain stores
 
-	require.Equal(t, numBlocks, node3.GetStorage().GetNamingStore().Len())
-	require.Equal(t, numBlocks+1, node3.GetStorage().GetBlockchainStore().Len())
+	require.Equal(t, 10, node3.GetStorage().GetNamingStore().Len())
+	require.Equal(t, 11, node3.GetStorage().GetBlockchainStore().Len())
 
 	// > check that all blockchain store have the same last block hash
 
