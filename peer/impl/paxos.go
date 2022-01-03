@@ -93,7 +93,7 @@ func (n *node) RetryTag(name string, mh string) {
 			n.paxos.proposer.MsgsPreparedMutex.Lock()
 			n.paxos.proposer.MsgsPrepared[retry.UniqID] = struct{}{}
 			n.paxos.proposer.MsgsPreparedMutex.Unlock()
-			//fmt.Println("retrying")
+
 			err = n.Broadcast(msg)
 			n.RetryTag(retry.Filename, retry.Metahash)
 			if err != nil {
