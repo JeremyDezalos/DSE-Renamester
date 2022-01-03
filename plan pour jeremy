@@ -1,16 +1,22 @@
 type : NeighborsMsg (neighbors: liste d'IP (puis d'ID quand on mergera avec Roamin))
+ok
 
 type : DisconnectMsg ()
+ok
 
 fct : sendBackupNodes(IP, voisins):
     envoie un NeighborsMsg à IP avec la liste de ses nouveaux voisins si cette node se deco
+ok
 
 fct : sendNewNeighborsToPeers():
     appelle sendBackupNodes() pour tous ses peers
+ok
 
 à modifier: appeler sendNewNeighborsToPeers dans addpeer()
+ok
 
 à modifier: quand il y a une nouvelle routing entry, verifier si c'est un neighbor. Si oui, appeler sendNewNeighborsToPeers()
+ok
 
 fct : disconnect():
     arrete d'envoyer des heartbeatMessages

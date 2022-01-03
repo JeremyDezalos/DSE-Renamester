@@ -109,6 +109,8 @@ func (n *node) AddPeer(addr ...string) {
 	for _, a := range addr {
 		n.lockedRoutingTable.add(a, a)
 	}
+	//keeping the neighbors updated
+	n.sendNewNeighborsToPeers()
 }
 
 // GetRoutingTable implements peer.Service
@@ -130,6 +132,9 @@ func (n *node) SetRoutingEntry(origin, relayAddr string) {
 			n.lockedRoutingTable.delete(origin)
 		} else {
 			n.lockedRoutingTable.add(origin, relayAddr)
+			if origin == relayAddr {
+				n.sendNewNeighborsToPeers()
+			}
 		}
 	}
 }
