@@ -1,6 +1,8 @@
 package impl
 
 import (
+	"crypto"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"os"
@@ -28,6 +30,18 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 	// Therefore, you are free to rename and change it as you want.
 
 	n := node{conf: conf}
+
+	if conf.PrivateKey == nil {
+		var err error
+		n.id, n.privateKey, err = ed25519.GenerateKey(nil)
+		if err != nil {
+			panic("failed to generate keypairs, cannot recover")
+		}
+	} else {
+		n.privateKey = conf.PrivateKey
+		n.id = conf.PrivateKey.Public()
+	}
+
 	n.messaging = initMessaging(n.conf)
 	n.lockedRoutingTable.routingTable = make(peer.RoutingTable)
 	// Add ourself to the list of peers
@@ -67,7 +81,9 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 type node struct {
 	peer.Peer
 	// You probably want to keep the peer.Configuration on this struct:
-	conf peer.Configuration
+	conf       peer.Configuration
+	id         crypto.PublicKey
+	privateKey crypto.PrivateKey
 	*messaging
 	started bool
 	stoped  chan struct{}
