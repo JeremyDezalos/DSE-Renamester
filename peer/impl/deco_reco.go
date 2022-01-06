@@ -1,6 +1,8 @@
 package impl
 
 import (
+	"sync"
+
 	"go.dedis.ch/cs438/types"
 )
 
@@ -58,6 +60,75 @@ func (n *node) sendNewNeighborsToPeers() error {
 	return nil
 }
 
-func (n *node) handlePerrDisconenction() {
+func (n *node) handleDisconnection(address string) {
+	_, isNeighbor := getNeighbors(n.lockedRoutingTable.routingTable)[address]
+	n.lockedRoutingTable.delete(address)
+	n.messaging.missedHeartBeats.delete(address)
+	if isNeighbor {
+		backupNeighbors, ok := n.backupNodes.getBackup(address)
+		if ok {
+			for _, newNeighbor := range backupNeighbors {
+				n.SetRoutingEntry(newNeighbor, newNeighbor)
+			}
+		}
+		n.sendNewNeighborsToPeers()
+	}
+}
 
+type BackupMap struct {
+	sync.Mutex
+	backups map[string][]string
+}
+
+func (backupMap *BackupMap) getBackup(key string) ([]string, bool) {
+	backupMap.Lock()
+	defer backupMap.Unlock()
+	val, ok := backupMap.backups[key]
+	return val, ok
+}
+
+func (backupMap *BackupMap) setBackup(key string, val []string) {
+	backupMap.Lock()
+	defer backupMap.Unlock()
+	backupMap.backups[key] = val
+}
+
+func (backupMap *BackupMap) delete(key string) {
+	backupMap.Lock()
+	defer backupMap.Unlock()
+	delete(backupMap.backups, key)
+}
+
+type MissedHeartBeatCounter struct {
+	sync.Mutex
+	counters map[string]uint
+}
+
+func (counter *MissedHeartBeatCounter) getCounter(key string) (uint, bool) {
+	counter.Lock()
+	defer counter.Unlock()
+	val, ok := counter.counters[key]
+	return val, ok
+}
+
+func (counter *MissedHeartBeatCounter) getCounters() map[string]uint {
+	counter.Lock()
+	defer counter.Unlock()
+	copy := make(map[string]uint)
+	for key, val := range counter.counters {
+		copy[key] = val
+	}
+	return copy
+}
+
+func (counter *MissedHeartBeatCounter) setCounter(key string, value uint) {
+	counter.Lock()
+	defer counter.Unlock()
+	counter.counters[key] = value
+}
+
+func (counter *MissedHeartBeatCounter) delete(key string) {
+	counter.Lock()
+	defer counter.Unlock()
+	delete(counter.counters, key)
 }

@@ -17,11 +17,14 @@ type messaging struct {
 	rumorsCollection   rumorsCollection
 	antiAnthropySig    *time.Ticker
 	heartbeatSig       *time.Ticker
+	heartbeatCheck     *time.Ticker
 	waitedAck          ackChanMap
 	lockedCatalog      lockedCatalog
 	waitedDataReply    dataChanMap
 	waitedSearchReply  searchChanMap
-	searchesReceived
+	searchesReceived   searchesReceived
+	backupNodes        BackupMap
+	missedHeartBeats   MissedHeartBeatCounter
 }
 
 func initMessaging(conf peer.Configuration) *messaging {
@@ -37,6 +40,7 @@ func initMessaging(conf peer.Configuration) *messaging {
 	m.waitedDataReply.waitingChan = make(map[string](chan []byte))
 	m.waitedSearchReply.waitingChan = make(map[string](chan []types.FileInfo))
 	m.searchesReceived.searches = make(map[string]struct{})
+	m.backupNodes.backups = make(map[string][]string)
 	return &m
 }
 
@@ -105,12 +109,9 @@ func (n *node) Broadcast(msg transport.Message) error {
 
 // AddPeer implements peer.Service
 func (n *node) AddPeer(addr ...string) {
-
 	for _, a := range addr {
-		n.lockedRoutingTable.add(a, a)
+		n.handleNewNode(a, a)
 	}
-	//keeping the neighbors updated
-	n.sendNewNeighborsToPeers()
 }
 
 // GetRoutingTable implements peer.Service
@@ -128,15 +129,22 @@ func (n *node) GetRoutingTable() peer.RoutingTable {
 func (n *node) SetRoutingEntry(origin, relayAddr string) {
 	// Make sure to keep our own address in the routing table
 	if origin != n.conf.Socket.GetAddress() {
-		if relayAddr == "" {
-			n.lockedRoutingTable.delete(origin)
-		} else {
-			n.lockedRoutingTable.add(origin, relayAddr)
-			if origin == relayAddr {
-				n.sendNewNeighborsToPeers()
-			}
-		}
+		n.handleNewNode(origin, relayAddr)
 	}
+}
+
+func (n *node) handleNewNode(origin string, relayAddr string) {
+	toRetransmit := true
+	if n.lockedRoutingTable.routingTable[origin] == relayAddr {
+		toRetransmit = false
+	}
+	n.lockedRoutingTable.add(origin, relayAddr)
+	if origin == relayAddr && toRetransmit {
+		//keeping the neighbors updated of our list of neighbors
+		n.sendNewNeighborsToPeers()
+	}
+	//initializes the counter of missed heart beats
+	n.missedHeartBeats.setCounter(origin, 0)
 }
 
 // Generate status message and send it

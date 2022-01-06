@@ -679,3 +679,22 @@ func (n *node) ExecTLCMessage(msg types.Message, pkt transport.Packet) error {
 
 	return nil
 }
+
+func (n *node) ExecNeighborsMessage(msg types.Message, pkt transport.Packet) error {
+	neighborsMsg, ok := msg.(*types.NeighborsMessage)
+	if !ok {
+		return xerrors.Errorf("wrong type: %T", msg)
+	}
+	backupNeighbors := neighborsMsg.Neighbors
+	n.backupNodes.setBackup(pkt.Header.Source, backupNeighbors)
+	return nil
+}
+
+func (n *node) ExecDisconnectMessage(msg types.Message, pkt transport.Packet) error {
+	_, ok := msg.(*types.DisconnectMessage)
+	if !ok {
+		return xerrors.Errorf("wrong type: %T", msg)
+	}
+	n.handleDisconnection(pkt.Header.Source)
+	return nil
+}

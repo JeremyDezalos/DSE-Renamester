@@ -1,7 +1,30 @@
+attribut (backupNodes): ajout de la map IP -> [IP] dans la node qui se souvient de la liste de nodes de backup
+ok
+
+attribut (missedHeartBeats) : ajout d'une map IP -> uint qui compte le nombre de missed heart beats
+ok
+
 type : NeighborsMsg (neighbors: liste d'IP (puis d'ID quand on mergera avec Roamin))
 ok
 
+callback : NeighborsMsg
+    ajoute le sender a la routing table en tant que voisin 
+    ajoute les IP/ID a la map
+ok
+
 type : DisconnectMsg ()
+ok
+
+callback : DisconnectMsg
+    appelle handleDisconnection()
+ok
+
+fct : handleDisconnection(IP):
+    retire IP de la routing table
+    retire IP de missedHeartBeats
+    si c'est un voisin:
+        ajoute les backup neighbors a la liste de voisins
+        appelle sendNewNeighborsToPeers()
 ok
 
 fct : sendBackupNodes(IP, voisins):
@@ -12,22 +35,29 @@ fct : sendNewNeighborsToPeers():
     appelle sendBackupNodes() pour tous ses peers
 ok
 
-à modifier: appeler sendNewNeighborsToPeers dans addpeer()
+à modifier: 
+    appeler sendNewNeighborsToPeers dans addpeer()
 ok
 
-à modifier: quand il y a une nouvelle routing entry, verifier si c'est un neighbor. Si oui, appeler sendNewNeighborsToPeers()
+à modifier: 
+    quand il y a une nouvelle routing entry, verifier si c'est un neighbor. 
+    Si oui: 
+        appeler sendNewNeighborsToPeers()
+    l'ajouter à missedHeartBeats
+ok
+
+à modifier: 
+    constamment vérifier si les nodes envoient des heartbeat
+    si elles n'en ont pas envoyé une certain nombre:
+        appeler handleDisconnection()
 ok
 
 fct : disconnect():
     arrete d'envoyer des heartbeatMessages
-    envoie un disconnectMsg
+    broadcast un disconnectMsg
     close la socket
 
 fct : reconnect():
-    recommence d'envoyer des heartbeatMessages
     ouvre une nouvelle socket
-
-à modifier : quand un neighbor est ajouté, constamment vérifier s'il envoie des heartbeat
-
-fct : handlePeerDisconnection():
-    ajoute les peers envoyés par la node qui s'est deconnectée à sa routing table puis appelle sendNewNeighborsToPeers()
+    recommence d'envoyer des heartbeatMessages
+    appelle sendNewNeighborsToPeers()

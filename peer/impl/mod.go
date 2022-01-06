@@ -117,6 +117,8 @@ func (n *node) Start() error {
 	n.conf.MessageRegistry.RegisterMessageCallback(types.PaxosProposeMessage{}, n.ExecPaxosProposeMessage)
 	n.conf.MessageRegistry.RegisterMessageCallback(types.PaxosAcceptMessage{}, n.ExecPaxosAcceptMessage)
 	n.conf.MessageRegistry.RegisterMessageCallback(types.TLCMessage{}, n.ExecTLCMessage)
+	n.conf.MessageRegistry.RegisterMessageCallback(types.NeighborsMessage{}, n.ExecNeighborsMessage)
+	n.conf.MessageRegistry.RegisterMessageCallback(types.DisconnectMessage{}, n.ExecDisconnectMessage)
 
 	if n.conf.AntiEntropyInterval > 0 {
 		n.antiAnthropySig = time.NewTicker(n.conf.AntiEntropyInterval)
@@ -145,6 +147,18 @@ func (n *node) Start() error {
 					log.Warn().Msgf("failed to marshal heartbeat packet: %v", err)
 				}
 				n.Broadcast(msg)
+			}
+		}()
+	}
+	if n.conf.NumberOfMissedHeartbeatsBeforeDisconnection > 0 {
+		n.heartbeatCheck = time.NewTicker(n.conf.HeartbeatInterval)
+		go func() {
+			<-n.heartbeatCheck.C
+			for node, counter := range n.missedHeartBeats.getCounters() {
+				if counter+1 >= n.conf.NumberOfMissedHeartbeatsBeforeDisconnection {
+					n.handleDisconnection(node)
+				}
+				n.missedHeartBeats.setCounter(node, counter+1)
 			}
 		}()
 	}
