@@ -1,7 +1,6 @@
 package impl
 
 import (
-	"crypto"
 	"crypto/ed25519"
 	"errors"
 	"fmt"
@@ -33,13 +32,19 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 
 	if conf.PrivateKey == nil {
 		var err error
-		n.id, n.privateKey, err = ed25519.GenerateKey(nil)
+		var pubKey []byte
+		pubKey, n.privateKey, err = ed25519.GenerateKey(nil)
 		if err != nil {
 			panic("failed to generate keypairs, cannot recover")
 		}
+		n.id = string(pubKey)
 	} else {
 		n.privateKey = conf.PrivateKey
-		n.id = conf.PrivateKey.Public()
+		pubKey, ok := conf.PrivateKey.Public().(ed25519.PublicKey)
+		if !ok {
+			panic("failed to generate public key from given private key, cannot recover")
+		}
+		n.id = string(pubKey)
 	}
 
 	n.messaging = initMessaging(n.conf)
@@ -81,9 +86,10 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 type node struct {
 	peer.Peer
 	// You probably want to keep the peer.Configuration on this struct:
-	conf       peer.Configuration
-	id         crypto.PublicKey
-	privateKey crypto.PrivateKey
+	conf peer.Configuration
+	id   string // string type for compatibility with previous routing table
+	// And ease of use in UI
+	privateKey ed25519.PrivateKey
 	*messaging
 	started bool
 	stoped  chan struct{}

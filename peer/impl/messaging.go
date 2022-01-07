@@ -13,6 +13,7 @@ import (
 // store information for messaging insterface
 type messaging struct {
 	lockedRoutingTable lockedRoutingTable
+	waitedIdReplies    chan string
 	rumorSeq           safeCounter
 	rumorsCollection   rumorsCollection
 	antiAnthropySig    *time.Ticker
@@ -30,6 +31,7 @@ func initMessaging(conf peer.Configuration) *messaging {
 
 	m := messaging{}
 	m.lockedRoutingTable.routingTable = make(peer.RoutingTable)
+	m.waitedIdReplies = make(chan string, 5)
 	// Arbitratry length queue, should avoid to much goroutine spinning
 	m.rumorsCollection.lockedRumors = make(map[string][]types.Rumor)
 	m.waitedAck.waitingChan = make(map[string](chan struct{}))
@@ -47,7 +49,7 @@ func (n *node) Unicast(dest string, msg transport.Message) error {
 	pkt := transport.Packet{Header: &header, Msg: &msg}
 	neighbor, ok := n.lockedRoutingTable.get(dest)
 	if !ok {
-		return xerrors.Errorf("failed to send unicast message: unknown neighbor")
+		return xerrors.Errorf("failed to send unicast message: unknown peer")
 	}
 	err := n.conf.Socket.Send(neighbor, pkt, time.Second*1)
 	if err != nil {
@@ -106,9 +108,60 @@ func (n *node) Broadcast(msg transport.Message) error {
 // AddPeer implements peer.Service
 func (n *node) AddPeer(addr ...string) {
 
-	for _, a := range addr {
-		n.lockedRoutingTable.add(a, a)
+	// for _, a := range addr {
+	// 	n.lockedRoutingTable.add(a, a)
+	// }
+	// TODO: Send IdRequest and wait for IdReply
+	// Send identity request (with empty destination because we do not know id yet)
+	requestHeader := transport.NewHeader(n.id, n.id, "", 0)
+	request := types.IdRequestMessage{
+		Ip: n.conf.Socket.GetAddress(),
 	}
+	requestMsg, err := n.conf.MessageRegistry.MarshalMessage(&request)
+	if err != nil {
+		// AddPeer should be able to return an error now!
+		return xerrors.Errorf("failed to marshal id request message: %v", err)
+	}
+	requestPkt := transport.Packet{
+		Header: &requestHeader,
+		Msg:    &requestMsg,
+	}
+	// Direct send (because the routing table is yet to be populated)
+	remainingAddr := make(map[string]struct{})
+	for _, ip := range addr {
+
+		n.conf.Socket.Send(ip, requestPkt, 1*time.Second)
+		remainingAddr[ip] = struct{}{}
+	}
+	// and wait for IdReply (with multiple attempts)
+	t := time.NewTicker(n.conf.AckTimeout)
+	retry := 0
+	for len(remainingAddr) > 0 && retry < 3 {
+		select {
+		case replyId := <-n.waitedIdReplies:
+			_, ok := remainingAddr[replyId]
+			if ok {
+				delete(remainingAddr, replyId)
+			} else {
+				// Just in case we allow to add peer concurently
+
+				// Using a goroutin in the event that the channel buffer was not enough
+				go func() {
+					n.waitedIdReplies <- replyId
+				}()
+			}
+		case <-t.C:
+			// Retry for the missing addresses
+			for ip, _ := range remainingAddr {
+				n.conf.Socket.Send(ip, requestPkt, 1*time.Second)
+			}
+			retry = retry + 1
+			// Send to another
+			t.Reset(n.conf.AckTimeout)
+		}
+	}
+	t.Stop()
+
 	//keeping the neighbors updated
 	n.sendNewNeighborsToPeers()
 }

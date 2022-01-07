@@ -18,6 +18,46 @@ import (
 	"golang.org/x/xerrors"
 )
 
+func (n *node) ExecIdRequestMessage(msg types.Message, pkt transport.Packet) error {
+	idRequestMessage, ok := msg.(*types.IdRequestMessage)
+	if !ok {
+		return xerrors.Errorf("wrong type: %T", msg)
+	}
+	// Add requester to neighbors
+	n.SetRoutingEntry(pkt.Header.Source, idRequestMessage.Ip)
+	// Send identity reply
+	replyHeader := transport.NewHeader(n.id, n.id, pkt.Header.Source, 0)
+	reply := types.IdReplyMessage{
+		Ip: n.conf.Socket.GetAddress(),
+	}
+	replyMsg, err := n.conf.MessageRegistry.MarshalMessage(&reply)
+	if err != nil {
+		return xerrors.Errorf("failed to marshal id reply message: %v", err)
+	}
+	replyPkt := transport.Packet{
+		Header: &replyHeader,
+		Msg:    &replyMsg,
+	}
+	// This goes through the routing table, but
+	n.sendPacket(replyPkt)
+
+	return nil
+}
+
+func (n *node) ExecIdReplyMessage(msg types.Message, pkt transport.Packet) error {
+	idReplyMessage, ok := msg.(*types.IdReplyMessage)
+	if !ok {
+		return xerrors.Errorf("wrong type: %T", msg)
+	}
+
+	// Add replier to neighbors
+	n.SetRoutingEntry(pkt.Header.Source, idReplyMessage.Ip)
+	// Indicates we received a response for the Ip
+	n.messaging.waitedIdReplies <- idReplyMessage.Ip
+
+	return nil
+}
+
 func (n *node) ExecChatMessage(msg types.Message, pkt transport.Packet) error {
 	_, ok := msg.(*types.ChatMessage)
 	if !ok {
