@@ -56,6 +56,11 @@ Last changes:
 
 For now, default UI configuration always create new keypairs
 
+Routing table properly working with (base64 encoded) public keys 
+Added a Neighbors table (also displayed in UI)
+
+## History
+----
 Added idRequest/Reply  
 Still updating `AddPeer`   
 Using `n.conf.AckTimeout` for id request for now, maybe should have its own timeout
@@ -66,6 +71,8 @@ Also AddPeer should now return and error when id didn't receive an idReply from
 some peers (not yet updated) (still need to update calls to AddPeer to take this into account)  
 
 
+Not sure about updating paxos with ids
+
 |! Warning !|
 |---|
 There IS an issue for now because some operation in SOME callbacks bypass the routing table and therefore will send packets with an ID instead of an IP  
@@ -74,5 +81,3 @@ List of places where a `n.conf.Socket.Send(...)` (bypassing routing) was replace
 - ExecRumorMessage
 - ExecStatusMessage (x2)
 - ExecSearchRequestMessage
-
-Not sure about updating paxos with ids

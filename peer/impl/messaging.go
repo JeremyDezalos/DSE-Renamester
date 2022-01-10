@@ -45,13 +45,9 @@ func initMessaging(conf peer.Configuration) *messaging {
 
 // Unicast implements peer.Messaging
 func (n *node) Unicast(dest string, msg transport.Message) error {
-	neighbor, ok := n.lockedRoutingTable.get(dest)
-	if !ok {
-		return xerrors.Errorf("failed to send unicast message: unknown peer")
-	}
 	header := transport.NewHeader(n.id, n.id, dest, 0)
 	pkt := transport.Packet{Header: &header, Msg: &msg}
-	err := n.conf.Socket.Send(neighbor, pkt, time.Second*1)
+	err := n.sendPacket(pkt)
 	if err != nil {
 		return xerrors.Errorf("failed to send unicast message: %v", err)
 	}
@@ -145,8 +141,6 @@ func (n *node) AddPeer(addr ...string) error {
 	for len(remainingAddr) > 0 && retry < 3 {
 		select {
 		case replyId := <-n.waitedIdReplies:
-			fmt.Printf("def received smth at some point\n")
-
 			delete(remainingAddr, replyId)
 		case <-t.C:
 			// Retry for the missing addresses
@@ -195,6 +189,16 @@ func (n *node) SetRoutingEntry(origin, relayAddr string) {
 			n.sendNewNeighborsToPeers()
 		}
 	}
+}
+
+func (n *node) GetNeighborsTable() map[string]string {
+	n.lockedRoutingTable.Lock()
+	defer n.lockedRoutingTable.Unlock()
+	copy := make(map[string]string, len(n.lockedRoutingTable.neighbors))
+	for k, v := range n.lockedRoutingTable.neighbors {
+		copy[k] = v
+	}
+	return copy
 }
 
 // Generate status message and send it
@@ -250,7 +254,6 @@ func (n *node) waitForAck(pkt transport.Packet) error {
 
 func (n *node) sendPacket(pkt transport.Packet) error {
 	dest, ok := n.lockedRoutingTable.resolveNeighbor(pkt.Header.Destination)
-	fmt.Printf("Sending packet to: %s\n", dest)
 	if ok {
 		err := n.conf.Socket.Send(dest, pkt, time.Second*1)
 		if errors.Is(err, transport.TimeoutErr(0)) {

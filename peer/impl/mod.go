@@ -52,6 +52,7 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 
 	n.messaging = initMessaging(n.conf)
 	n.lockedRoutingTable.routingTable = make(peer.RoutingTable)
+	n.lockedRoutingTable.neighbors = make(map[string]string)
 	// Add ourself to the list of peers
 	n.started = false
 	n.stoped = make(chan struct{})
@@ -59,7 +60,8 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 	// Add ourself to the list of peers
 	// Should use SetRouting, this call block the node and it can't actually
 	// receive the id req/rep during call (although it's not an issue with http node)
-	n.AddPeer(conf.Socket.GetAddress())
+	n.lockedRoutingTable.addNeighbor(n.id, n.conf.Socket.GetAddress())
+	n.SetRoutingEntry(n.id, n.id)
 
 	proposer := PaxosProposer{
 		Retry:        make(chan types.PaxosValue),
@@ -234,8 +236,7 @@ func (n *node) Start() error {
 				} else {
 
 					// do something with the packet and the err
-					if n.id == pkt.Header.Destination || pkt.Header.Destination == "" { // Special case for identity requests
-						fmt.Printf("Received Pkt %s\n type: %s\n", pkt.Header.String(), pkt.Msg.Type)
+					if n.id == pkt.Header.Destination || pkt.Header.Destination == "" { // "" -> Special case for identity requests
 						err = n.conf.MessageRegistry.ProcessPacket(pkt)
 						if err != nil {
 							log.Warn().Msgf("failed to process packet: %v", err)

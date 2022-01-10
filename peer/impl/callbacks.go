@@ -27,7 +27,6 @@ func (n *node) ExecIdRequestMessage(msg types.Message, pkt transport.Packet) err
 	n.SetRoutingEntry(pkt.Header.Source, pkt.Header.Source)
 	// Send identity reply
 	replyHeader := transport.NewHeader(n.id, n.id, pkt.Header.Source, 0)
-	fmt.Printf("Header: %s\n", replyHeader)
 
 	reply := types.IdReplyMessage{
 		Ip: n.conf.Socket.GetAddress(),
@@ -50,11 +49,8 @@ func (n *node) ExecIdRequestMessage(msg types.Message, pkt transport.Packet) err
 }
 
 func (n *node) ExecIdReplyMessage(msg types.Message, pkt transport.Packet) error {
-	fmt.Printf("rep received at some point\n")
 	idReplyMessage, ok := msg.(*types.IdReplyMessage)
 	if !ok {
-		fmt.Printf("wrong typu?\n")
-
 		return xerrors.Errorf("wrong type: %T", msg)
 	}
 

@@ -258,7 +258,7 @@ class Unicast extends BaseElement {
 
 class Routing extends BaseElement {
     static get targets() {
-        return ["table", "graphviz", "peer", "origin", "relay"];
+        return ["neighbors", "table", "graphviz", "peer", "origin", "relay"];
     }
 
     initialize() {
@@ -271,10 +271,18 @@ class Routing extends BaseElement {
         try {
             const resp = await this.fetch(addr);
             const data = await resp.json();
-
+            this.neighborsTarget.innerHTML = "";
             this.tableTarget.innerHTML = "";
+            const neigbhors = data.N
+            const table = data.T
+            for (const [id, ip] of Object.entries(neigbhors)) {
+                const el = document.createElement("tr");
 
-            for (const [origin, relay] of Object.entries(data)) {
+                el.innerHTML = `<td>${id}</td><td>${ip}</td>`;
+                this.neighborsTarget.appendChild(el);
+            }
+                
+            for (const [origin, relay] of Object.entries(table)) {
                 const el = document.createElement("tr");
 
                 el.innerHTML = `<td>${origin}</td><td>${relay}</td>`;

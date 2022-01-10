@@ -46,6 +46,9 @@ type Messaging interface {
 	//
 	// - implemented in HW0
 	SetRoutingEntry(origin, relayAddr string)
+
+	// GetNeighborsTable returns the node's neighbors table. It should be a copy.
+	GetNeighborsTable() map[string]string
 }
 
 // RoutingTable defines a simple next-hop routing table. The key is the origin
