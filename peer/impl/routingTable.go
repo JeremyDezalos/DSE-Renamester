@@ -81,6 +81,7 @@ import (
 type lockedRoutingTable struct {
 	sync.Mutex
 	routingTable peer.RoutingTable
+	neighbors    map[string]string
 }
 
 // Thread safe get of a routing table entry
@@ -98,12 +99,27 @@ func (lockedRoutingTable *lockedRoutingTable) add(key, value string) {
 	lockedRoutingTable.routingTable[key] = value
 }
 
-// Thread safe delete of a routing table entry
+// Thread safe get of a neighbhor entry
+func (lockedRoutingTable *lockedRoutingTable) resolveNeighbor(key string) (string, bool) {
+	lockedRoutingTable.Lock()
+	defer lockedRoutingTable.Unlock()
+	val, ok := lockedRoutingTable.neighbors[key]
+	return val, ok
+}
+
+// Thread safe add of a neighbhor entry
+func (lockedRoutingTable *lockedRoutingTable) addNeighbor(key string, address string) {
+	lockedRoutingTable.Lock()
+	defer lockedRoutingTable.Unlock()
+	lockedRoutingTable.neighbors[key] = address
+}
+
+// Thread safe delete of a routing table entry (and it's corresponding neighbor entry)
 func (lockedRoutingTable *lockedRoutingTable) delete(key string) {
 	lockedRoutingTable.Lock()
 	defer lockedRoutingTable.Unlock()
 	delete(lockedRoutingTable.routingTable, key)
-
+	delete(lockedRoutingTable.neighbors, key)
 }
 
 // Get all neighbors from a routing table

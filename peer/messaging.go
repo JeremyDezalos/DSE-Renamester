@@ -31,7 +31,7 @@ type Messaging interface {
 	// routing table of the node. Adding ourself should have no effect.
 	//
 	// - implemented in HW0
-	AddPeer(addr ...string)
+	AddPeer(addr ...string) error
 
 	// GetRoutingTable returns the node's routing table. It should be a copy.
 	//

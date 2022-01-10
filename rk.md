@@ -7,12 +7,8 @@ but internally should change to sending idRequest and idReply messages,
 which would be unicasted depending only on IP addresses
 Current unicast use the routing table, this special unicast should not.
 
-If we make headers use only IDs then the routing table translate this ID to an IP 
-to send to, this IP can either be direct or indirect, the previous remark on 
-unicast still holds.   
-"Issue": we cannot recognize neighbors anymore because we can't check 
-"origin == relay" in the routing table map, BUT the relay list always contains 
-the neighbor set (AKA not a real issue mb soz, see getNeighbors).
+If we make headers use only IDs then the routing table translate need a special 
+table for neighbhors to translate neighbors addresses to IPs.   
 
 (letter->IDs, number->IPs)
 
@@ -40,6 +36,7 @@ their IPs so that anyone can extend its list of neighbors.
 At node creation: 
 - Generate IP as done currently
 - Generate ed25519 keys ID ONLY IF none is given by the configuration
+    - Using base 64 to make the keys human readable
 
 General:
 - Replace destination IPs in routing table with pub key
@@ -66,9 +63,16 @@ as a 0 value would be quite inconvenient
 (result in having to manually retry adding a peer if it fails, without any feedback)  
 For now it will retry N times (with N chosen arbitrarily, N=3)  
 Also AddPeer should now return and error when id didn't receive an idReply from 
-some peers (not yet updated)  
-### Warning !!
----
-There IS and issue for now because some operation in SOME callbacks bypass 
-the routing table and therefore will send packets with an ID instead of an IP  
-Also, every node function referring to itself should now use its ID instead of IP  |
+some peers (not yet updated) (still need to update calls to AddPeer to take this into account)  
+
+
+|! Warning !|
+|---|
+There IS an issue for now because some operation in SOME callbacks bypass the routing table and therefore will send packets with an ID instead of an IP  
+Also, every node function referring to itself should now use its ID instead of IP  
+List of places where a `n.conf.Socket.Send(...)` (bypassing routing) was replaced: 
+- ExecRumorMessage
+- ExecStatusMessage (x2)
+- ExecSearchRequestMessage
+
+Not sure about updating paxos with ids

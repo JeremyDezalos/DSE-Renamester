@@ -2,6 +2,7 @@ package impl
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"go.dedis.ch/cs438/peer"
@@ -44,13 +45,12 @@ func initMessaging(conf peer.Configuration) *messaging {
 
 // Unicast implements peer.Messaging
 func (n *node) Unicast(dest string, msg transport.Message) error {
-	selfAddr := n.conf.Socket.GetAddress()
-	header := transport.NewHeader(selfAddr, selfAddr, dest, 0)
-	pkt := transport.Packet{Header: &header, Msg: &msg}
 	neighbor, ok := n.lockedRoutingTable.get(dest)
 	if !ok {
 		return xerrors.Errorf("failed to send unicast message: unknown peer")
 	}
+	header := transport.NewHeader(n.id, n.id, dest, 0)
+	pkt := transport.Packet{Header: &header, Msg: &msg}
 	err := n.conf.Socket.Send(neighbor, pkt, time.Second*1)
 	if err != nil {
 		return xerrors.Errorf("failed to send unicast message: %v", err)
@@ -60,11 +60,10 @@ func (n *node) Unicast(dest string, msg transport.Message) error {
 
 func (n *node) Broadcast(msg transport.Message) error {
 
-	selfAddr := n.conf.Socket.GetAddress()
 	// Create RumorsMessage pkt and send it
 	seq := n.rumorSeq.incr()
 	rumor := types.Rumor{
-		Origin:   selfAddr,
+		Origin:   n.id,
 		Sequence: seq,
 		Msg:      &msg,
 	}
@@ -78,9 +77,9 @@ func (n *node) Broadcast(msg transport.Message) error {
 	}
 
 	// Get a random neighbhor
-	randNeighbor := getRandomNeighbor(n.GetRoutingTable(), selfAddr)
+	randNeighbor := getRandomNeighbor(n.GetRoutingTable(), n.id)
 	if randNeighbor != "" {
-		neighborHeader := transport.NewHeader(selfAddr, selfAddr, randNeighbor, 0)
+		neighborHeader := transport.NewHeader(n.id, n.id, randNeighbor, 0)
 		neighborPkt := transport.Packet{
 			Header: &neighborHeader,
 			Msg:    &rumorsTransport,
@@ -92,7 +91,7 @@ func (n *node) Broadcast(msg transport.Message) error {
 		go n.waitForAck(neighborPkt)
 	}
 	// Process the message for oneself
-	selfHeader := transport.NewHeader(selfAddr, selfAddr, selfAddr, 0)
+	selfHeader := transport.NewHeader(n.id, n.id, n.id, 0)
 	selfPkt := transport.Packet{
 		Header: &selfHeader,
 		Msg:    &msg,
@@ -106,7 +105,7 @@ func (n *node) Broadcast(msg transport.Message) error {
 }
 
 // AddPeer implements peer.Service
-func (n *node) AddPeer(addr ...string) {
+func (n *node) AddPeer(addr ...string) error {
 
 	// for _, a := range addr {
 	// 	n.lockedRoutingTable.add(a, a)
@@ -128,10 +127,17 @@ func (n *node) AddPeer(addr ...string) {
 	}
 	// Direct send (because the routing table is yet to be populated)
 	remainingAddr := make(map[string]struct{})
+	var aggregateErr error
 	for _, ip := range addr {
 
-		n.conf.Socket.Send(ip, requestPkt, 1*time.Second)
-		remainingAddr[ip] = struct{}{}
+		err := n.conf.Socket.Send(ip, requestPkt, 1*time.Second)
+		if errors.Is(err, transport.TimeoutErr(0)) {
+			aggregateErr = fmt.Errorf("%v\n - failed to send packet for ip %s (timeout): %v", aggregateErr, ip, err)
+		} else if err != nil {
+			aggregateErr = fmt.Errorf("%v\n - failed to send packet for ip %s: %v", aggregateErr, ip, err)
+		} else {
+			remainingAddr[ip] = struct{}{}
+		}
 	}
 	// and wait for IdReply (with multiple attempts)
 	t := time.NewTicker(n.conf.AckTimeout)
@@ -139,21 +145,18 @@ func (n *node) AddPeer(addr ...string) {
 	for len(remainingAddr) > 0 && retry < 3 {
 		select {
 		case replyId := <-n.waitedIdReplies:
-			_, ok := remainingAddr[replyId]
-			if ok {
-				delete(remainingAddr, replyId)
-			} else {
-				// Just in case we allow to add peer concurently
+			fmt.Printf("def received smth at some point\n")
 
-				// Using a goroutin in the event that the channel buffer was not enough
-				go func() {
-					n.waitedIdReplies <- replyId
-				}()
-			}
+			delete(remainingAddr, replyId)
 		case <-t.C:
 			// Retry for the missing addresses
-			for ip, _ := range remainingAddr {
-				n.conf.Socket.Send(ip, requestPkt, 1*time.Second)
+			for ip := range remainingAddr {
+				err := n.conf.Socket.Send(ip, requestPkt, 1*time.Second)
+				if errors.Is(err, transport.TimeoutErr(0)) {
+					aggregateErr = fmt.Errorf("%v\n - failed to send packet for ip %s (timeout): %v", aggregateErr, ip, err)
+				} else if err != nil {
+					aggregateErr = fmt.Errorf("%v\n - failed to send packet for ip %s: %v", aggregateErr, ip, err)
+				}
 			}
 			retry = retry + 1
 			// Send to another
@@ -162,8 +165,13 @@ func (n *node) AddPeer(addr ...string) {
 	}
 	t.Stop()
 
+	if len(remainingAddr) > 0 {
+		aggregateErr = fmt.Errorf("%v\nfollowing peers could not be added: %s", aggregateErr, remainingAddr)
+	}
+
 	//keeping the neighbors updated
 	n.sendNewNeighborsToPeers()
+	return aggregateErr
 }
 
 // GetRoutingTable implements peer.Service
@@ -179,30 +187,26 @@ func (n *node) GetRoutingTable() peer.RoutingTable {
 
 // SetRoutingEntry implements peer.Service
 func (n *node) SetRoutingEntry(origin, relayAddr string) {
-	// Make sure to keep our own address in the routing table
-	if origin != n.conf.Socket.GetAddress() {
-		if relayAddr == "" {
-			n.lockedRoutingTable.delete(origin)
-		} else {
-			n.lockedRoutingTable.add(origin, relayAddr)
-			if origin == relayAddr {
-				n.sendNewNeighborsToPeers()
-			}
+	if relayAddr == "" {
+		n.lockedRoutingTable.delete(origin)
+	} else {
+		n.lockedRoutingTable.add(origin, relayAddr)
+		if origin == relayAddr {
+			n.sendNewNeighborsToPeers()
 		}
 	}
 }
 
 // Generate status message and send it
 func (n *node) sendAntiAnthropy() error {
-	selfAddr := n.conf.Socket.GetAddress()
 	statusMsg := n.rumorsCollection.generateStatusMessage()
 	msg, err := n.conf.MessageRegistry.MarshalMessage(&statusMsg)
 	if err != nil {
 		return xerrors.Errorf("failed to marshal rumors forward message: %v", err)
 	}
-	randNeighbor := getRandomNeighbor(n.GetRoutingTable(), selfAddr)
+	randNeighbor := getRandomNeighbor(n.GetRoutingTable(), n.id)
 	if randNeighbor != "" {
-		header := transport.NewHeader(selfAddr, selfAddr, randNeighbor, 0)
+		header := transport.NewHeader(n.id, n.id, randNeighbor, 0)
 		pkt := transport.Packet{
 			Header: &header,
 			Msg:    &msg,
@@ -245,7 +249,8 @@ func (n *node) waitForAck(pkt transport.Packet) error {
 }
 
 func (n *node) sendPacket(pkt transport.Packet) error {
-	dest, ok := n.lockedRoutingTable.get(pkt.Header.Destination)
+	dest, ok := n.lockedRoutingTable.resolveNeighbor(pkt.Header.Destination)
+	fmt.Printf("Sending packet to: %s\n", dest)
 	if ok {
 		err := n.conf.Socket.Send(dest, pkt, time.Second*1)
 		if errors.Is(err, transport.TimeoutErr(0)) {

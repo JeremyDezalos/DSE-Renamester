@@ -29,7 +29,7 @@ type Configuration struct {
 	// Private key of a peer, used to sign messages so that other can verifiy
 	// their authenticity. A new key is generated at peer creation if no key
 	// is given.
-	// Default: empty slice
+	// Default: nil
 	PrivateKey ed25519.PrivateKey
 
 	MessageRegistry registry.Registry

@@ -96,7 +96,6 @@ func (n *node) Download(metahash string) ([]byte, error) {
 }
 
 func (n *node) getLocalOrRemoteData(hash string) ([]byte, error) {
-	self := n.conf.Socket.GetAddress()
 	blob := n.conf.Storage.GetDataBlobStore()
 	data := blob.Get(hash)
 	if data == nil {
@@ -110,7 +109,7 @@ func (n *node) getLocalOrRemoteData(hash string) ([]byte, error) {
 			RequestID: requestID,
 			Key:       hash,
 		}
-		header := transport.NewHeader(self, self, peer, 0)
+		header := transport.NewHeader(n.id, n.id, peer, 0)
 		msg, err := n.conf.MessageRegistry.MarshalMessage(&request)
 		if err != nil {
 			return nil, xerrors.Errorf("failed to marshal data request message: %v", err)
@@ -182,7 +181,7 @@ func (n *node) Tag(name string, mh string) error {
 		prepareMsg := types.PaxosPrepareMessage{
 			Step:   0,
 			ID:     id,
-			Source: n.conf.Socket.GetAddress(),
+			Source: n.id,
 		}
 
 		prepare, err := n.conf.MessageRegistry.MarshalMessage(prepareMsg)
@@ -251,7 +250,7 @@ func (n *node) UpdateCatalog(key string, peer string) {
 
 func (n *node) SearchAll(reg regexp.Regexp, budget uint, timeout time.Duration) (names []string, err error) {
 	requestID := xid.New().String()
-	err = n.Search(reg, budget, requestID, n.conf.Socket.GetAddress(), getNeighbors(n.GetRoutingTable()))
+	err = n.Search(reg, budget, requestID, n.id, getNeighbors(n.GetRoutingTable()))
 	if err != nil {
 		err = xerrors.Errorf("failed to search (all): %v", err)
 		names = nil
@@ -285,8 +284,7 @@ func (n *node) SearchAll(reg regexp.Regexp, budget uint, timeout time.Duration) 
 }
 
 func (n *node) Search(reg regexp.Regexp, budget uint, requestID string, origin string, neighbors map[string]struct{}) error {
-	self := n.conf.Socket.GetAddress()
-	delete(neighbors, self)
+	delete(neighbors, n.id)
 	if len(neighbors) == 0 {
 		return nil
 	}
@@ -312,7 +310,7 @@ func (n *node) Search(reg regexp.Regexp, budget uint, requestID string, origin s
 		if err != nil {
 			return xerrors.Errorf("failed to marshal search request message: %v", err)
 		}
-		searchHeader := transport.NewHeader(self, self, neighbor, 0)
+		searchHeader := transport.NewHeader(n.id, n.id, neighbor, 0)
 		searchPkt := transport.Packet{
 			Header: &searchHeader,
 			Msg:    &searchMsg,
@@ -367,7 +365,7 @@ func (n *node) SearchFirst(pattern regexp.Regexp, conf peer.ExpandingRing) (name
 		return
 	}
 	requestID := xid.New().String()
-	err = n.Search(pattern, budget, requestID, n.conf.Socket.GetAddress(), getNeighbors(n.GetRoutingTable()))
+	err = n.Search(pattern, budget, requestID, n.id, getNeighbors(n.GetRoutingTable()))
 	if err != nil {
 		xerrors.Errorf("failed to search (first): %v", err)
 		return
@@ -405,7 +403,7 @@ func (n *node) SearchFirst(pattern regexp.Regexp, conf peer.ExpandingRing) (name
 			// And therefore a new channel to wait on
 			waitChan = n.waitedSearchReply.createChan(requestID)
 			defer n.waitedSearchReply.deleteChan(requestID)
-			err = n.Search(pattern, budget, requestID, n.conf.Socket.GetAddress(), getNeighbors(n.GetRoutingTable()))
+			err = n.Search(pattern, budget, requestID, n.id, getNeighbors(n.GetRoutingTable()))
 			if err != nil {
 				err = xerrors.Errorf("failed to search (first): %v", err)
 				return

@@ -2,6 +2,7 @@ package impl
 
 import (
 	"crypto/ed25519"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -37,14 +38,16 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 		if err != nil {
 			panic("failed to generate keypairs, cannot recover")
 		}
-		n.id = string(pubKey)
+
+		n.id = base64.StdEncoding.EncodeToString(pubKey)
 	} else {
 		n.privateKey = conf.PrivateKey
 		pubKey, ok := conf.PrivateKey.Public().(ed25519.PublicKey)
 		if !ok {
 			panic("failed to generate public key from given private key, cannot recover")
 		}
-		n.id = string(pubKey)
+
+		n.id = base64.StdEncoding.EncodeToString(pubKey)
 	}
 
 	n.messaging = initMessaging(n.conf)
@@ -54,6 +57,8 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 	n.stoped = make(chan struct{})
 
 	// Add ourself to the list of peers
+	// Should use SetRouting, this call block the node and it can't actually
+	// receive the id req/rep during call (although it's not an issue with http node)
 	n.AddPeer(conf.Socket.GetAddress())
 
 	proposer := PaxosProposer{
@@ -124,6 +129,9 @@ func (c *safeCounter) get() uint {
 func (n *node) Start() error {
 	n.started = true
 	// Register callbacks
+	n.conf.MessageRegistry.RegisterMessageCallback(types.IdRequestMessage{}, n.ExecIdRequestMessage)
+	n.conf.MessageRegistry.RegisterMessageCallback(types.IdReplyMessage{}, n.ExecIdReplyMessage)
+
 	n.conf.MessageRegistry.RegisterMessageCallback(types.ChatMessage{}, n.ExecChatMessage)
 	n.conf.MessageRegistry.RegisterMessageCallback(types.RumorsMessage{}, n.ExecRumorsMessage)
 	n.conf.MessageRegistry.RegisterMessageCallback(types.StatusMessage{}, n.ExecStatusMessage)
@@ -186,7 +194,7 @@ func (n *node) Start() error {
 				prepare := types.PaxosPrepareMessage{
 					Step:   n.paxos.Step,
 					ID:     id,
-					Source: n.conf.Socket.GetAddress(),
+					Source: n.id,
 				}
 				msg, err := n.conf.MessageRegistry.MarshalMessage(prepare)
 				if err != nil {
@@ -226,7 +234,8 @@ func (n *node) Start() error {
 				} else {
 
 					// do something with the packet and the err
-					if n.conf.Socket.GetAddress() == pkt.Header.Destination {
+					if n.id == pkt.Header.Destination || pkt.Header.Destination == "" { // Special case for identity requests
+						fmt.Printf("Received Pkt %s\n type: %s\n", pkt.Header.String(), pkt.Msg.Type)
 						err = n.conf.MessageRegistry.ProcessPacket(pkt)
 						if err != nil {
 							log.Warn().Msgf("failed to process packet: %v", err)
@@ -234,11 +243,11 @@ func (n *node) Start() error {
 						}
 
 					} else {
-						pkt.Header.RelayedBy = n.conf.Socket.GetAddress()
+						pkt.Header.RelayedBy = n.id
 						// Probably not how to relay
 						nextHop, ok := n.lockedRoutingTable.get(pkt.Header.Destination)
 						if !ok {
-							log.Warn().Msgf("failed to relay packet: unknown address")
+							log.Warn().Msgf("failed to relay packet: unknown identity")
 						} else {
 
 							err = n.conf.Socket.Send(nextHop, pkt, time.Second*1)

@@ -116,7 +116,10 @@ func (m messaging) peerPost(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "*")
 
-	m.node.AddPeer(res...)
+	err = m.node.AddPeer(res...)
+	if err != nil {
+		http.Error(w, "failed to add peers: "+err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (m messaging) routingGet(w http.ResponseWriter, r *http.Request) {

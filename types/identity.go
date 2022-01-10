@@ -32,7 +32,7 @@ func (c IdRequestMessage) HTML() string {
 
 // NewEmpty implements types.Message.
 func (c IdReplyMessage) NewEmpty() Message {
-	return &IdRequestMessage{}
+	return &IdReplyMessage{}
 }
 
 // Name implements types.Message.

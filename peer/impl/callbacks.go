@@ -3,13 +3,11 @@ package impl
 import (
 	"crypto"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"math/rand"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"go.dedis.ch/cs438/peer"
 	"go.dedis.ch/cs438/storage"
@@ -23,10 +21,14 @@ func (n *node) ExecIdRequestMessage(msg types.Message, pkt transport.Packet) err
 	if !ok {
 		return xerrors.Errorf("wrong type: %T", msg)
 	}
+
 	// Add requester to neighbors
-	n.SetRoutingEntry(pkt.Header.Source, idRequestMessage.Ip)
+	n.lockedRoutingTable.addNeighbor(pkt.Header.Source, idRequestMessage.Ip)
+	n.SetRoutingEntry(pkt.Header.Source, pkt.Header.Source)
 	// Send identity reply
 	replyHeader := transport.NewHeader(n.id, n.id, pkt.Header.Source, 0)
+	fmt.Printf("Header: %s\n", replyHeader)
+
 	reply := types.IdReplyMessage{
 		Ip: n.conf.Socket.GetAddress(),
 	}
@@ -38,22 +40,31 @@ func (n *node) ExecIdRequestMessage(msg types.Message, pkt transport.Packet) err
 		Header: &replyHeader,
 		Msg:    &replyMsg,
 	}
-	// This goes through the routing table, but
-	n.sendPacket(replyPkt)
+	// This goes through the routing table, but we just updated it so should be fine
+	err = n.sendPacket(replyPkt)
+	if err != nil {
+		return xerrors.Errorf("failed to send id reply message: %v", err)
+	}
 
 	return nil
 }
 
 func (n *node) ExecIdReplyMessage(msg types.Message, pkt transport.Packet) error {
+	fmt.Printf("rep received at some point\n")
 	idReplyMessage, ok := msg.(*types.IdReplyMessage)
 	if !ok {
+		fmt.Printf("wrong typu?\n")
+
 		return xerrors.Errorf("wrong type: %T", msg)
 	}
 
 	// Add replier to neighbors
-	n.SetRoutingEntry(pkt.Header.Source, idReplyMessage.Ip)
+	n.lockedRoutingTable.addNeighbor(pkt.Header.Source, idReplyMessage.Ip)
+	n.SetRoutingEntry(pkt.Header.Source, pkt.Header.Source)
 	// Indicates we received a response for the Ip
-	n.messaging.waitedIdReplies <- idReplyMessage.Ip
+	go func() {
+		n.messaging.waitedIdReplies <- idReplyMessage.Ip
+	}()
 
 	return nil
 }
@@ -68,7 +79,6 @@ func (n *node) ExecChatMessage(msg types.Message, pkt transport.Packet) error {
 }
 
 func (n *node) ExecRumorsMessage(msg types.Message, pkt transport.Packet) error {
-	selfAddr := n.conf.Socket.GetAddress()
 	rumorsMessage, ok := msg.(*types.RumorsMessage)
 	if !ok {
 		return xerrors.Errorf("wrong type: %T", msg)
@@ -100,7 +110,7 @@ func (n *node) ExecRumorsMessage(msg types.Message, pkt transport.Packet) error 
 		AckedPacketID: pkt.Header.PacketID,
 		Status:        statusMsg,
 	}
-	ackHeader := transport.NewHeader(selfAddr, selfAddr, pkt.Header.Source, 0)
+	ackHeader := transport.NewHeader(n.id, n.id, pkt.Header.Source, 0)
 	ackMsg, err := n.conf.MessageRegistry.MarshalMessage(&ack)
 
 	if err != nil {
@@ -111,19 +121,18 @@ func (n *node) ExecRumorsMessage(msg types.Message, pkt transport.Packet) error 
 		Msg:    &ackMsg,
 	}
 	// Weird (bypassing routing table) but expected way to send acknowlegment
-	err = n.conf.Socket.Send(pkt.Header.Source, ackPkt, time.Second*1)
-	if errors.Is(err, transport.TimeoutErr(0)) {
-		return xerrors.Errorf("failed to send packet (timeout): %v", err)
-	} else if err != nil {
+	// err = n.conf.Socket.Send(pkt.Header.Source, ackPkt, time.Second*1)
+	err = n.sendPacket(ackPkt)
+	if err != nil {
 		return xerrors.Errorf("failed to send packet: %v", err)
 	}
 
 	// Forward the RumorMessage to another random neighbor if one of the rumor was expected
 	if len(acceptedRumors) > 0 {
 
-		randomNeighbor := getRandomNeighbor(n.GetRoutingTable(), selfAddr, pkt.Header.Source)
+		randomNeighbor := getRandomNeighbor(n.GetRoutingTable(), n.id, pkt.Header.Source)
 		if randomNeighbor != "" {
-			rumorsForwardHeader := transport.NewHeader(selfAddr, selfAddr, randomNeighbor, 0)
+			rumorsForwardHeader := transport.NewHeader(n.id, n.id, randomNeighbor, 0)
 			rumorsForwardMsg, err := n.conf.MessageRegistry.MarshalMessage(rumorsMessage)
 			if err != nil {
 				return xerrors.Errorf("failed to marshal rumors forward message: %v", err)
@@ -143,7 +152,6 @@ func (n *node) ExecRumorsMessage(msg types.Message, pkt transport.Packet) error 
 }
 
 func (n *node) ExecStatusMessage(msg types.Message, pkt transport.Packet) error {
-	selfAddr := n.conf.Socket.GetAddress()
 	remoteStatus, ok := msg.(*types.StatusMessage)
 	if !ok {
 		return xerrors.Errorf("wrong type: %T", msg)
@@ -162,7 +170,7 @@ func (n *node) ExecStatusMessage(msg types.Message, pkt transport.Packet) error 
 	}
 
 	if needUpdate {
-		sendStatusHeader := transport.NewHeader(selfAddr, selfAddr, pkt.Header.Source, 0)
+		sendStatusHeader := transport.NewHeader(n.id, n.id, pkt.Header.Source, 0)
 		selfStatusMsg, err := n.conf.MessageRegistry.MarshalMessage(&selfStatus)
 		if err != nil {
 			return xerrors.Errorf("failed to marshal status message (ask for update): %v", err)
@@ -173,10 +181,9 @@ func (n *node) ExecStatusMessage(msg types.Message, pkt transport.Packet) error 
 		}
 
 		// Weird (bypassing routing table) but expected way to send status update
-		err = n.conf.Socket.Send(pkt.Header.Source, sendStatusPkt, time.Second*1)
-		if errors.Is(err, transport.TimeoutErr(0)) {
-			return xerrors.Errorf("failed to send packet (timeout): %v", err)
-		} else if err != nil {
+		// err = n.conf.Socket.Send(pkt.Header.Source, sendStatusPkt, time.Second*1)
+		err = n.sendPacket(sendStatusPkt)
+		if err != nil {
 			return xerrors.Errorf("failed to send packet: %v", err)
 		}
 	}
@@ -198,7 +205,7 @@ func (n *node) ExecStatusMessage(msg types.Message, pkt transport.Packet) error 
 		missingRumorsMsg := types.RumorsMessage{
 			Rumors: missingRumors,
 		}
-		missingHeader := transport.NewHeader(selfAddr, selfAddr, pkt.Header.Source, 0)
+		missingHeader := transport.NewHeader(n.id, n.id, pkt.Header.Source, 0)
 		missingMsg, err := n.conf.MessageRegistry.MarshalMessage(&missingRumorsMsg)
 		if err != nil {
 			return xerrors.Errorf("failed to marshal missing rumors message: %v", err)
@@ -208,10 +215,9 @@ func (n *node) ExecStatusMessage(msg types.Message, pkt transport.Packet) error 
 			Msg:    &missingMsg,
 		}
 		// Weird (bypassing routing table) but expected way to send status update
-		err = n.conf.Socket.Send(pkt.Header.Source, missingPkt, time.Second*1)
-		if errors.Is(err, transport.TimeoutErr(0)) {
-			return xerrors.Errorf("failed to send packet (timeout): %v", err)
-		} else if err != nil {
+		// err = n.conf.Socket.Send(pkt.Header.Source, missingPkt, time.Second*1)
+		err = n.sendPacket(missingPkt)
+		if err != nil {
 			return xerrors.Errorf("failed to send packet: %v", err)
 		}
 	}
@@ -219,9 +225,9 @@ func (n *node) ExecStatusMessage(msg types.Message, pkt transport.Packet) error 
 	// ContinueMongering
 	if !needUpdate && len(missingRumors) == 0 {
 		if rand.Float64() < n.conf.ContinueMongering {
-			randNeighbor := getRandomNeighbor(n.GetRoutingTable(), selfAddr, pkt.Header.Source)
+			randNeighbor := getRandomNeighbor(n.GetRoutingTable(), n.id, pkt.Header.Source)
 			if randNeighbor != "" {
-				mongeringHeader := transport.NewHeader(selfAddr, selfAddr, randNeighbor, 0)
+				mongeringHeader := transport.NewHeader(n.id, n.id, randNeighbor, 0)
 				mongeringMsg, err := n.conf.MessageRegistry.MarshalMessage(&selfStatus)
 				if err != nil {
 					return xerrors.Errorf("failed to marshal ContinueMongering (status) message: %v", err)
@@ -280,7 +286,7 @@ func (n *node) ExecPrivateMessage(msg types.Message, pkt transport.Packet) error
 		return xerrors.Errorf("wrong type: %T", msg)
 	}
 
-	_, ok = privateMessage.Recipients[n.conf.Socket.GetAddress()]
+	_, ok = privateMessage.Recipients[n.id]
 	if ok {
 		privateHeader := transport.NewHeader(pkt.Header.Source, pkt.Header.RelayedBy, pkt.Header.Destination, 0)
 		privatePkt := transport.Packet{
@@ -297,7 +303,6 @@ func (n *node) ExecPrivateMessage(msg types.Message, pkt transport.Packet) error
 }
 
 func (n *node) ExecDataRequestMessage(msg types.Message, pkt transport.Packet) error {
-	self := n.conf.Socket.GetAddress()
 	dataRequestMessage, ok := msg.(*types.DataRequestMessage)
 	if !ok {
 		return xerrors.Errorf("wrong type: %T", msg)
@@ -313,7 +318,7 @@ func (n *node) ExecDataRequestMessage(msg types.Message, pkt transport.Packet) e
 	if err != nil {
 		return xerrors.Errorf("failed to marshal data reply message: %v", err)
 	}
-	dataReplyHeader := transport.NewHeader(self, self, pkt.Header.Source, 0)
+	dataReplyHeader := transport.NewHeader(n.id, n.id, pkt.Header.Source, 0)
 	dataReplyPkt := transport.Packet{
 		Header: &dataReplyHeader,
 		Msg:    &dataReplyMsg,
@@ -336,7 +341,6 @@ func (n *node) ExecDataReplyMessage(msg types.Message, pkt transport.Packet) err
 }
 
 func (n *node) ExecSearchRequestMessage(msg types.Message, pkt transport.Packet) error {
-	self := n.conf.Socket.GetAddress()
 	searchRequestMessage, ok := msg.(*types.SearchRequestMessage)
 	if !ok {
 		return xerrors.Errorf("wrong type: %T", msg)
@@ -395,16 +399,15 @@ func (n *node) ExecSearchRequestMessage(msg types.Message, pkt transport.Packet)
 	if err != nil {
 		return xerrors.Errorf("failed to marshal search reply message: %v", err)
 	}
-	searchReplyHeader := transport.NewHeader(self, self, searchRequestMessage.Origin, 0)
+	searchReplyHeader := transport.NewHeader(n.id, n.id, searchRequestMessage.Origin, 0)
 	searchReplyPkt := transport.Packet{
 		Header: &searchReplyHeader,
 		Msg:    &searchReplyMsg,
 	}
 	// "The reply must be directly sent to the packet’s source"
-	err = n.conf.Socket.Send(pkt.Header.Source, searchReplyPkt, time.Second*1)
-	if errors.Is(err, transport.TimeoutErr(0)) {
-		return xerrors.Errorf("failed to send search reply packet (timeout): %v", err)
-	} else if err != nil {
+	// err = n.conf.Socket.Send(pkt.Header.Source, searchReplyPkt, time.Second*1)
+	err = n.sendPacket(searchReplyPkt)
+	if err != nil {
 		return xerrors.Errorf("failed to send search reply packet: %v", err)
 	}
 
