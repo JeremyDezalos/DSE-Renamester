@@ -27,7 +27,7 @@ type searchesReceived struct {
 }
 
 func (n *node) Upload(data io.Reader) (metahash string, err error) {
-
+	n.checkAndwaitReconnection()
 	blob := n.conf.Storage.GetDataBlobStore()
 	content, err := io.ReadAll(data)
 	if err != nil {
@@ -75,6 +75,7 @@ func (n *node) Upload(data io.Reader) (metahash string, err error) {
 }
 
 func (n *node) Download(metahash string) ([]byte, error) {
+	n.checkAndwaitReconnection()
 	// Get metafile
 	metafile, err := n.getLocalOrRemoteData(metahash)
 	if err != nil {
@@ -168,6 +169,7 @@ func (n *node) waitForDataReply(pkt transport.Packet, requestID string) ([]byte,
 }
 
 func (n *node) Tag(name string, mh string) error {
+	n.checkAndwaitReconnection()
 	store := n.conf.Storage.GetNamingStore()
 	check := store.Get(name)
 	if check != nil {
@@ -250,6 +252,7 @@ func (n *node) UpdateCatalog(key string, peer string) {
 }
 
 func (n *node) SearchAll(reg regexp.Regexp, budget uint, timeout time.Duration) (names []string, err error) {
+	n.checkAndwaitReconnection()
 	requestID := xid.New().String()
 	err = n.Search(reg, budget, requestID, n.conf.Socket.GetAddress(), getNeighbors(n.GetRoutingTable()))
 	if err != nil {
@@ -326,7 +329,7 @@ func (n *node) Search(reg regexp.Regexp, budget uint, requestID string, origin s
 }
 
 func (n *node) SearchFirst(pattern regexp.Regexp, conf peer.ExpandingRing) (name string, err error) {
-
+	n.checkAndwaitReconnection()
 	// Same as search all but in waitForSearchFirstReplies :
 	//    - Discard responses names if the fileInfo does not indicate all chunks are available
 	//    - Stop on first full name found

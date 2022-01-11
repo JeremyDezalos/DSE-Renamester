@@ -41,11 +41,13 @@ func initMessaging(conf peer.Configuration) *messaging {
 	m.waitedSearchReply.waitingChan = make(map[string](chan []types.FileInfo))
 	m.searchesReceived.searches = make(map[string]struct{})
 	m.backupNodes.backups = make(map[string][]string)
+	m.missedHeartBeats.counters = make(map[string]uint)
 	return &m
 }
 
 // Unicast implements peer.Messaging
 func (n *node) Unicast(dest string, msg transport.Message) error {
+	n.checkAndwaitReconnection()
 	selfAddr := n.conf.Socket.GetAddress()
 	header := transport.NewHeader(selfAddr, selfAddr, dest, 0)
 	pkt := transport.Packet{Header: &header, Msg: &msg}
@@ -61,7 +63,7 @@ func (n *node) Unicast(dest string, msg transport.Message) error {
 }
 
 func (n *node) Broadcast(msg transport.Message) error {
-
+	n.checkAndwaitReconnection()
 	selfAddr := n.conf.Socket.GetAddress()
 	// Create RumorsMessage pkt and send it
 	seq := n.rumorSeq.incr()

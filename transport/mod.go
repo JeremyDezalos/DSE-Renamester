@@ -40,6 +40,10 @@ type Socket interface {
 
 	// GetOuts must return all the messages sent so far.
 	GetOuts() []Packet
+
+	// Close closes the connection. It returns an error if the socket is already
+	// closed.
+	Close() error
 }
 
 // ClosableSocket augments the Socket interface with a close function. We

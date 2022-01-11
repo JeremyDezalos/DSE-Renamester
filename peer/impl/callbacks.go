@@ -303,7 +303,7 @@ func (n *node) ExecSearchRequestMessage(msg types.Message, pkt transport.Packet)
 	}
 	// Peers need to detect if they receive a duplicate search request and ignore it.
 	// Each request contains a unique identifier that allows peers to identify then.
-	if n.alreadySearched(searchRequestMessage.RequestID) {
+	if n.searchesReceived.alreadySearched(searchRequestMessage.RequestID) {
 		return nil
 	}
 	neighbors := getNeighbors(n.GetRoutingTable())

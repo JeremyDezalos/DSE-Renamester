@@ -4,6 +4,12 @@ ok
 attribut (missedHeartBeats) : ajout d'une map IP -> uint qui compte le nombre de missed heart beats
 ok
 
+attribut (isConnected) : ajout d'un variable booléenne qui retient si la node est connectée ou non
+ok
+
+attribut (waitReconnection) : ajout d'une liste de channels qui attendent la reconnexion
+ok
+
 type : NeighborsMsg (neighbors: liste d'IP (puis d'ID quand on mergera avec Roamin))
 ok
 
@@ -55,9 +61,26 @@ ok
 fct : disconnect():
     arrete d'envoyer des heartbeatMessages
     broadcast un disconnectMsg
+    met isConnected à faux
     close la socket
+
+
+ajout de close dans l'interface socket
+
+ajout de Transport dans l'interface Configuration
+    permet à la node de créer des sockets toute seule
+
+fct : checkAndwaitReconnection()
+    verifie si la node est connectée,
+    si non : attend la reconnection
+ok
 
 fct : reconnect():
     ouvre une nouvelle socket
+    met isConnected à vrai
     recommence d'envoyer des heartbeatMessages
     appelle sendNewNeighborsToPeers()
+
+gui : ajouter un bouton deconnecter:
+    appelle disconnect()
+

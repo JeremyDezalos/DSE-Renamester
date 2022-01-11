@@ -25,6 +25,7 @@ type Factory func(Configuration) Peer
 type Configuration struct {
 	Socket          transport.Socket
 	MessageRegistry registry.Registry
+	Transport       transport.Transport
 
 	// AntiEntropyInterval is the interval at which the peer sends a status
 	// message to a random neighbor. 0 means no status messages are sent.

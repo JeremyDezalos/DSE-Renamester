@@ -33,6 +33,8 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 	// Add ourself to the list of peers
 	n.started = false
 	n.stoped = make(chan struct{})
+	n.isConnected = true
+	n.waitReconnection.waiting = make(map[chan struct{}]struct{})
 
 	// Add ourself to the list of peers
 	n.AddPeer(conf.Socket.GetAddress())
@@ -69,9 +71,11 @@ type node struct {
 	// You probably want to keep the peer.Configuration on this struct:
 	conf peer.Configuration
 	*messaging
-	started bool
-	stoped  chan struct{}
-	paxos   Paxos
+	started          bool
+	stoped           chan struct{}
+	paxos            Paxos
+	isConnected      bool
+	waitReconnection WaitReconnection
 }
 
 type safeCounter struct {
@@ -124,6 +128,7 @@ func (n *node) Start() error {
 		n.antiAnthropySig = time.NewTicker(n.conf.AntiEntropyInterval)
 		go func() {
 			for {
+				n.checkAndwaitReconnection()
 				<-n.antiAnthropySig.C
 				err := n.sendAntiAnthropy()
 				if err != nil {
@@ -141,6 +146,7 @@ func (n *node) Start() error {
 		n.Broadcast(msg)
 		go func() {
 			for {
+				n.checkAndwaitReconnection()
 				<-n.heartbeatSig.C
 				msg, err := n.conf.MessageRegistry.MarshalMessage(types.EmptyMessage{})
 				if err != nil {
@@ -153,6 +159,7 @@ func (n *node) Start() error {
 	if n.conf.NumberOfMissedHeartbeatsBeforeDisconnection > 0 {
 		n.heartbeatCheck = time.NewTicker(n.conf.HeartbeatInterval)
 		go func() {
+			n.checkAndwaitReconnection()
 			<-n.heartbeatCheck.C
 			for node, counter := range n.missedHeartBeats.getCounters() {
 				if counter+1 >= n.conf.NumberOfMissedHeartbeatsBeforeDisconnection {
@@ -208,6 +215,7 @@ func (n *node) Start() error {
 					fmt.Println(err)
 				}
 			default:
+				n.checkAndwaitReconnection()
 				pkt, err := n.conf.Socket.Recv(time.Second * 1 / 5)
 				if errors.Is(err, transport.TimeoutErr(0)) {
 					log.Warn().Msgf("failed to receive packet (timeout): %v", err)
@@ -262,4 +270,13 @@ func (n *node) Stop() error {
 		}
 	}
 	return nil
+}
+
+func (n *node) checkAndwaitReconnection() {
+	if !n.isConnected {
+		channel := make(chan struct{})
+		n.waitReconnection.set(channel)
+		<-channel
+		n.waitReconnection.delete(channel)
+	}
 }

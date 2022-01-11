@@ -4,14 +4,38 @@ import (
 	"sync"
 
 	"go.dedis.ch/cs438/types"
+	"golang.org/x/xerrors"
 )
 
-func (n *node) disconnect() {
-
+func (n *node) disconnect() error {
+	if !n.isConnected {
+		return xerrors.Errorf("node already disconnected")
+	}
+	msg := types.DisconnectMessage{}
+	deco, err := n.conf.MessageRegistry.MarshalMessage(msg)
+	if err != nil {
+		return err
+	}
+	n.Broadcast(deco)
+	n.isConnected = false
+	n.conf.Socket.Close()
+	return nil
 }
 
-func (n *node) reconnect() {
-
+func (n *node) reconnect(address string) error {
+	if n.isConnected {
+		return xerrors.Errorf("node already connected")
+	}
+	socket, err := n.conf.Transport.CreateSocket(address)
+	if err != nil {
+		return err
+	}
+	n.conf.Socket = socket
+	n.isConnected = true
+	for _, channel := range n.waitReconnection.getAll() {
+		channel <- struct{}{}
+	}
+	return nil
 }
 
 func (n *node) sendBackupNodes(address string, backupNodes []string) error {
@@ -27,7 +51,7 @@ func (n *node) sendBackupNodes(address string, backupNodes []string) error {
 }
 
 func (n *node) sendNewNeighborsToPeers() error {
-	neighbors := getNeighbors(n.lockedRoutingTable.routingTable)
+	neighbors := getNeighbors(n.GetRoutingTable())
 	list := make([]string, len(neighbors))
 	for neighbor := range neighbors {
 		list = append(list, neighbor)
@@ -131,4 +155,31 @@ func (counter *MissedHeartBeatCounter) delete(key string) {
 	counter.Lock()
 	defer counter.Unlock()
 	delete(counter.counters, key)
+}
+
+type WaitReconnection struct {
+	sync.Mutex
+	waiting map[chan struct{}]struct{}
+}
+
+func (waitReco *WaitReconnection) getAll() []chan struct{} {
+	waitReco.Lock()
+	defer waitReco.Unlock()
+	channels := make([]chan struct{}, len(waitReco.waiting))
+	for waiting := range waitReco.waiting {
+		channels = append(channels, waiting)
+	}
+	return channels
+}
+
+func (waitReco *WaitReconnection) set(channel chan struct{}) {
+	waitReco.Lock()
+	defer waitReco.Unlock()
+	waitReco.waiting[channel] = struct{}{}
+}
+
+func (waitReco *WaitReconnection) delete(channel chan struct{}) {
+	waitReco.Lock()
+	defer waitReco.Unlock()
+	delete(waitReco.waiting, channel)
 }
