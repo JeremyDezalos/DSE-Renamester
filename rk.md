@@ -1,6 +1,25 @@
 ## BS self reflections
 ----
 
+Next step: add renaming
+
+Idea: change routing table (yeah... again) to have a mapping as follow
+
+peerID -> {
+    nextHopID
+    IP (empty string "" for non-neighbors)
+    display name
+}
+
+otherwise we will have up to 3 tables
+
+This would allow to:
+- Get a list of neighbhors somewhat efficiently
+- Get a list of peerID->display name easily
+- Still get the routing table easily
+- (Optional) Easily create a routing table EXCLUDING neighbors (to avoid A->A mapping in UI) 
+
+
 Original "AddPeer" function allows to add (mutiple) peers using only IP addresses
 This as to be kept somehow for initial connection to other peers,
 but internally should change to sending idRequest and idReply messages, 
@@ -58,6 +77,13 @@ For now, default UI configuration always create new keypairs
 
 Routing table properly working with (base64 encoded) public keys 
 Added a Neighbors table (also displayed in UI)
+Added a alias (names) table (displayed in UI)
+Possibility to rename (under "broadcast" tab)
+Names displayed in chat instead of pub keys (when the routing table is up to date) 
+Pub keys displayed on hover and copied on click in chat
+
+!! To fix, not displayed as sender when broadcasting !!
+(also message too longs or with linebreak are broken but it might have been the case from the start)
 
 ## History
 ----

@@ -9,6 +9,7 @@
 // controller as the `this.yyyTarget` variable. See
 // https://stimulus.hotwired.dev/ for a complete introduction.
 
+
 const main = function () {
     const application = Stimulus.Application.start();
 
@@ -26,6 +27,9 @@ const main = function () {
 
     initCollapsible();
 };
+
+// Preserve name conversion locally to display name in place of IDs
+let nameConversion
 
 function initCollapsible() {
     // https://www.w3schools.com/howto/howto_js_collapsible.asp
@@ -88,6 +92,11 @@ class BaseElement extends Stimulus.Controller {
     get peerInfo() {
         const element = document.getElementById("peerInfo");
         return this.application.getControllerForElementAndIdentifier(element, "peerInfo");
+    }
+
+    copyID(id){
+        navigator.clipboard.writeText(id)
+        this.flash.printSuccess("Copied ID");
     }
 }
 
@@ -233,15 +242,31 @@ class Unicast extends BaseElement {
             const date = new Date();
             const el = document.createElement("div");
 
+            // note that this is not secure and prone to XSS attack.
             el.classList.add("sent");
+            const msgBox = document.createElement("div")
+            const msg = document.createElement("p")
+            msg.className = "msg"
+            msg.innerHTML = `${message}`
+            const details = document.createElement("p")
+            details.className = "details"
+            details.title = destination
+            details.innerHTML = `to ${nameConversion[destination]} 
+                at ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}`
+            msgBox.appendChild(msg)
+            msgBox.appendChild(details)
+            el.appendChild(msgBox)
+            details.addEventListener("click", ()=>{this.copyID(destination)})
+            
             el.innerHTML = `
                 <div>
                     <p class="msg">${message}</p>
-                    <p class="details">
-                        to ${destination} 
+                    <p class="details" title="${destination}">
+                        to ${nameConversion[destination]} 
                         at ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}
                     </p>
                 </div>`;
+
 
             this.messagingController.addMsg(el);
         } catch (e) {
@@ -258,7 +283,7 @@ class Unicast extends BaseElement {
 
 class Routing extends BaseElement {
     static get targets() {
-        return ["neighbors", "table", "graphviz", "peer", "origin", "relay"];
+        return ["alias", "neighbors", "table", "graphviz", "peer", "origin", "relay"];
     }
 
     initialize() {
@@ -271,10 +296,19 @@ class Routing extends BaseElement {
         try {
             const resp = await this.fetch(addr);
             const data = await resp.json();
+            this.aliasTarget.innerHTML = "";
             this.neighborsTarget.innerHTML = "";
             this.tableTarget.innerHTML = "";
+            nameConversion = data.A
+
             const neigbhors = data.N
             const table = data.T
+            for (const [id, name] of Object.entries(nameConversion)) {
+                const el = document.createElement("tr");
+
+                el.innerHTML = `<td>${id}</td><td>${name}</td>`;
+                this.aliasTarget.appendChild(el);
+            }
             for (const [id, ip] of Object.entries(neigbhors)) {
                 const el = document.createElement("tr");
 
@@ -400,6 +434,7 @@ class Packets extends BaseElement {
 
             const el = document.createElement("div");
 
+            // Need to store own ID somehow
             if (pkt.Header.Source == this.peerInfo.socketAddr) {
                 el.classList.add("sent");
             } else {
@@ -407,7 +442,21 @@ class Packets extends BaseElement {
             }
 
             // note that this is not secure and prone to XSS attack.
-            el.innerHTML = `<div><p class="msg">${pkt.Msg.Payload.Message}</p><p class="details">from ${pkt.Header.Source} at ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}</p></div>`;
+            const msgBox = document.createElement("div")
+            const msg = document.createElement("p")
+            msg.className = "msg"
+            msg.innerHTML = `${pkt.Msg.Payload.Message}`
+            const details = document.createElement("p")
+            details.className = "details"
+            details.title = pkt.Header.Source
+            details.innerHTML = `from ${nameConversion[pkt.Header.Source]} at ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}`
+            msgBox.appendChild(msg)
+            msgBox.appendChild(details)
+            el.appendChild(msgBox)
+            details.addEventListener("click", ()=>{this.copyID(pkt.Header.Source)})
+
+            // // note that this is not secure and prone to XSS attack.
+            // el.innerHTML = `<div><p class="msg">${pkt.Msg.Payload.Message}</p><p class="details" title="${pkt.Header.Source}">from ${nameConversion[pkt.Header.Source]} at ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}</p></div>`;
 
             this.messagingController.addMsg(el);
         }
@@ -440,7 +489,44 @@ class Packets extends BaseElement {
 
 class Broadcast extends BaseElement {
     static get targets() {
-        return ["chatMessage", "privateMessage", "privateRecipients"];
+        return ["aliasBroadcast", "chatMessage", "privateMessage", "privateRecipients"];
+    }
+
+    // "hijacking" broadcast, the easy way but has restrictions 
+    // e.g., impossible to add arguments from the node because broadcast "POST" 
+    // only take generic messages ("msg" has to be the complete json representation)
+    async sendAlias() {
+        const addr = this.peerInfo.getAPIURL("/messaging/broadcast");
+
+        const ok = this.checkInputs(this.aliasBroadcastTarget);
+        if (!ok) {
+            return;
+        }
+    
+        const name = this.aliasBroadcastTarget.value;
+
+        const msg = {
+            "Type": "rename",
+            "payload": { 
+                "Alias": name
+            }
+        };
+
+        const fetchArgs = {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(msg)
+        };
+
+        try {
+            await this.fetch(addr, fetchArgs);
+            this.flash.printSuccess("new name broadcasted");
+        } catch (e) {
+            this.flash.printError("failed to send new name: " + e);
+        }
+
     }
 
     async sendChat() {

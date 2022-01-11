@@ -49,6 +49,9 @@ type Messaging interface {
 
 	// GetNeighborsTable returns the node's neighbors table. It should be a copy.
 	GetNeighborsTable() map[string]string
+
+	// GetAliasTable returns the node's aliases table. It should be a copy.
+	GetAliasTable() map[string]string
 }
 
 // RoutingTable defines a simple next-hop routing table. The key is the origin

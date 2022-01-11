@@ -15,3 +15,10 @@ type IdRequestMessage struct {
 type IdReplyMessage struct {
 	Ip string
 }
+
+// Rename is a message asking for other user to register a new alias for your ID
+//
+// - implements types.Message
+type RenameMessage struct {
+	Alias string
+}

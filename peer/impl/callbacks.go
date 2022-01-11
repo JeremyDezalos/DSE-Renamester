@@ -23,8 +23,7 @@ func (n *node) ExecIdRequestMessage(msg types.Message, pkt transport.Packet) err
 	}
 
 	// Add requester to neighbors
-	n.lockedRoutingTable.addNeighbor(pkt.Header.Source, idRequestMessage.Ip)
-	n.SetRoutingEntry(pkt.Header.Source, pkt.Header.Source)
+	n.lockedRoutingTable.setEntry(pkt.Header.Source, pkt.Header.Source, idRequestMessage.Ip, pkt.Header.Source)
 	// Send identity reply
 	replyHeader := transport.NewHeader(n.id, n.id, pkt.Header.Source, 0)
 
@@ -55,13 +54,27 @@ func (n *node) ExecIdReplyMessage(msg types.Message, pkt transport.Packet) error
 	}
 
 	// Add replier to neighbors
-	n.lockedRoutingTable.addNeighbor(pkt.Header.Source, idReplyMessage.Ip)
-	n.SetRoutingEntry(pkt.Header.Source, pkt.Header.Source)
+	n.lockedRoutingTable.setEntry(pkt.Header.Source, pkt.Header.Source, idReplyMessage.Ip, pkt.Header.Source)
+
 	// Indicates we received a response for the Ip
 	go func() {
 		n.messaging.waitedIdReplies <- idReplyMessage.Ip
 	}()
 
+	return nil
+}
+
+func (n *node) ExecRenameMessage(msg types.Message, pkt transport.Packet) error {
+	renameMessage, ok := msg.(*types.RenameMessage)
+	if !ok {
+		return xerrors.Errorf("wrong type: %T", msg)
+	}
+
+	// Add replier to neighbors
+	err := n.lockedRoutingTable.updateAlias(pkt.Header.Source, renameMessage.Alias)
+	if err != nil {
+		return xerrors.Errorf("could not update name: %v", err)
+	}
 	return nil
 }
 

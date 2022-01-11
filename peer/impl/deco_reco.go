@@ -25,7 +25,7 @@ func (n *node) sendBackupNodes(address string, backupNodes []string) error {
 }
 
 func (n *node) sendNewNeighborsToPeers() error {
-	neighbors := getNeighbors(n.lockedRoutingTable.routingTable)
+	neighbors := getNeighbors(n.GetRoutingTable())
 	list := make([]string, len(neighbors))
 	for neighbor := range neighbors {
 		list = append(list, neighbor)

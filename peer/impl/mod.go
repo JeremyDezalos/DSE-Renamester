@@ -51,8 +51,7 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 	}
 
 	n.messaging = initMessaging(n.conf)
-	n.lockedRoutingTable.routingTable = make(peer.RoutingTable)
-	n.lockedRoutingTable.neighbors = make(map[string]string)
+	n.lockedRoutingTable.routingTable = make(map[string]routingTableEntry)
 	// Add ourself to the list of peers
 	n.started = false
 	n.stoped = make(chan struct{})
@@ -60,8 +59,7 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 	// Add ourself to the list of peers
 	// Should use SetRouting, this call block the node and it can't actually
 	// receive the id req/rep during call (although it's not an issue with http node)
-	n.lockedRoutingTable.addNeighbor(n.id, n.conf.Socket.GetAddress())
-	n.SetRoutingEntry(n.id, n.id)
+	n.lockedRoutingTable.setEntry(n.id, n.id, n.conf.Socket.GetAddress(), "That's you")
 
 	proposer := PaxosProposer{
 		Retry:        make(chan types.PaxosValue),
@@ -88,7 +86,7 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 }
 
 // node implements a peer to build a Peerster system
-//
+//RoutingTable
 // - implements peer.Peer
 type node struct {
 	peer.Peer
@@ -133,6 +131,7 @@ func (n *node) Start() error {
 	// Register callbacks
 	n.conf.MessageRegistry.RegisterMessageCallback(types.IdRequestMessage{}, n.ExecIdRequestMessage)
 	n.conf.MessageRegistry.RegisterMessageCallback(types.IdReplyMessage{}, n.ExecIdReplyMessage)
+	n.conf.MessageRegistry.RegisterMessageCallback(types.RenameMessage{}, n.ExecRenameMessage)
 
 	n.conf.MessageRegistry.RegisterMessageCallback(types.ChatMessage{}, n.ExecChatMessage)
 	n.conf.MessageRegistry.RegisterMessageCallback(types.RumorsMessage{}, n.ExecRumorsMessage)

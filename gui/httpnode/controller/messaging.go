@@ -125,12 +125,14 @@ func (m messaging) peerPost(w http.ResponseWriter, r *http.Request) {
 func (m messaging) routingGet(w http.ResponseWriter, r *http.Request) {
 	table := m.node.GetRoutingTable()
 	neighors := m.node.GetNeighborsTable()
+	alias := m.node.GetAliasTable()
 
 	// Create go object easily convertible to JSON
 	goToJson := struct {
 		N peer.RoutingTable
 		T map[string]string
-	}{neighors, table}
+		A map[string]string
+	}{neighors, table, alias}
 
 	err := r.ParseForm()
 	if err != nil {

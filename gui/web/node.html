@@ -52,6 +52,14 @@
 
         <div>
             <div>
+                <h3>Rename</h3>
+
+                <input class="broadcast-alias" data-broadcast-target="aliasBroadcast" name="alias" type="text" placeholder="Name"></input>
+                <button data-action="click->broadcast#sendAlias">
+                    Rename
+                </button>
+            </div>
+            <div>
                 <h3>ChatMessage</h3>
 
                 <div class="broadcast-chat-form">
@@ -86,6 +94,17 @@
         <h2 class="collapsible">Routing table</h2>
 
         <div>
+
+            <h4>aliases</h4>
+            <table>
+                <thead>
+                    <th>Identifier</th>
+                    <th>Name</th>
+                </thead>
+                <tbody data-routing-target="alias">
+                </tbody>
+            </table>
+
             <h4>neighbors</h4>
             <table>
                 <thead>

@@ -31,7 +31,7 @@ func initMessaging(conf peer.Configuration) *messaging {
 	// Therefore, you are free to rename and change it as you want.
 
 	m := messaging{}
-	m.lockedRoutingTable.routingTable = make(peer.RoutingTable)
+	m.lockedRoutingTable.routingTable = make(map[string]routingTableEntry)
 	m.waitedIdReplies = make(chan string, 5)
 	// Arbitratry length queue, should avoid to much goroutine spinning
 	m.rumorsCollection.lockedRumors = make(map[string][]types.Rumor)
@@ -174,7 +174,7 @@ func (n *node) GetRoutingTable() peer.RoutingTable {
 	defer n.lockedRoutingTable.Unlock()
 	copy := make(map[string]string, len(n.lockedRoutingTable.routingTable))
 	for k, v := range n.lockedRoutingTable.routingTable {
-		copy[k] = v
+		copy[k] = v.nextHop
 	}
 	return copy
 }
@@ -194,9 +194,21 @@ func (n *node) SetRoutingEntry(origin, relayAddr string) {
 func (n *node) GetNeighborsTable() map[string]string {
 	n.lockedRoutingTable.Lock()
 	defer n.lockedRoutingTable.Unlock()
-	copy := make(map[string]string, len(n.lockedRoutingTable.neighbors))
-	for k, v := range n.lockedRoutingTable.neighbors {
-		copy[k] = v
+	copy := make(map[string]string, len(n.lockedRoutingTable.routingTable))
+	for k, v := range n.lockedRoutingTable.routingTable {
+		if v.address != "" {
+			copy[k] = v.address
+		}
+	}
+	return copy
+}
+
+func (n *node) GetAliasTable() map[string]string {
+	n.lockedRoutingTable.Lock()
+	defer n.lockedRoutingTable.Unlock()
+	copy := make(map[string]string, len(n.lockedRoutingTable.routingTable))
+	for k, v := range n.lockedRoutingTable.routingTable {
+		copy[k] = v.alias
 	}
 	return copy
 }
