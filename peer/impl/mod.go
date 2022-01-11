@@ -33,8 +33,8 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 	// Add ourself to the list of peers
 	n.started = false
 	n.stoped = make(chan struct{})
-	n.isConnected = true
-	n.waitReconnection.waiting = make(map[chan struct{}]struct{})
+	n.decoReco.isConnected = true
+	n.decoReco.waiting = make(map[chan struct{}]struct{})
 
 	// Add ourself to the list of peers
 	n.AddPeer(conf.Socket.GetAddress())
@@ -71,11 +71,10 @@ type node struct {
 	// You probably want to keep the peer.Configuration on this struct:
 	conf peer.Configuration
 	*messaging
-	started          bool
-	stoped           chan struct{}
-	paxos            Paxos
-	isConnected      bool
-	waitReconnection WaitReconnection
+	started  bool
+	stoped   chan struct{}
+	paxos    Paxos
+	decoReco DecoReco
 }
 
 type safeCounter struct {
@@ -273,10 +272,10 @@ func (n *node) Stop() error {
 }
 
 func (n *node) checkAndwaitReconnection() {
-	if !n.isConnected {
+	if !n.decoReco.getStatus() {
 		channel := make(chan struct{})
-		n.waitReconnection.set(channel)
+		n.decoReco.setChannel(channel)
 		<-channel
-		n.waitReconnection.delete(channel)
+		n.decoReco.deleteChannel(channel)
 	}
 }

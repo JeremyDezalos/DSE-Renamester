@@ -7,8 +7,8 @@ import (
 	"golang.org/x/xerrors"
 )
 
-func (n *node) disconnect() error {
-	if !n.isConnected {
+func (n *node) Disconnect() error {
+	if !n.decoReco.isConnected {
 		return xerrors.Errorf("node already disconnected")
 	}
 	msg := types.DisconnectMessage{}
@@ -17,13 +17,13 @@ func (n *node) disconnect() error {
 		return err
 	}
 	n.Broadcast(deco)
-	n.isConnected = false
+	n.decoReco.setStatus(false)
 	n.conf.Socket.Close()
 	return nil
 }
 
-func (n *node) reconnect(address string) error {
-	if n.isConnected {
+func (n *node) Reconnect(address string) error {
+	if n.decoReco.isConnected {
 		return xerrors.Errorf("node already connected")
 	}
 	socket, err := n.conf.Transport.CreateSocket(address)
@@ -31,8 +31,8 @@ func (n *node) reconnect(address string) error {
 		return err
 	}
 	n.conf.Socket = socket
-	n.isConnected = true
-	for _, channel := range n.waitReconnection.getAll() {
+	n.decoReco.setStatus(false)
+	for _, channel := range n.decoReco.getAllChannels() {
 		channel <- struct{}{}
 	}
 	return nil
@@ -157,12 +157,13 @@ func (counter *MissedHeartBeatCounter) delete(key string) {
 	delete(counter.counters, key)
 }
 
-type WaitReconnection struct {
+type DecoReco struct {
 	sync.Mutex
-	waiting map[chan struct{}]struct{}
+	isConnected bool
+	waiting     map[chan struct{}]struct{}
 }
 
-func (waitReco *WaitReconnection) getAll() []chan struct{} {
+func (waitReco *DecoReco) getAllChannels() []chan struct{} {
 	waitReco.Lock()
 	defer waitReco.Unlock()
 	channels := make([]chan struct{}, len(waitReco.waiting))
@@ -172,14 +173,26 @@ func (waitReco *WaitReconnection) getAll() []chan struct{} {
 	return channels
 }
 
-func (waitReco *WaitReconnection) set(channel chan struct{}) {
+func (waitReco *DecoReco) setChannel(channel chan struct{}) {
 	waitReco.Lock()
 	defer waitReco.Unlock()
 	waitReco.waiting[channel] = struct{}{}
 }
 
-func (waitReco *WaitReconnection) delete(channel chan struct{}) {
+func (waitReco *DecoReco) deleteChannel(channel chan struct{}) {
 	waitReco.Lock()
 	defer waitReco.Unlock()
 	delete(waitReco.waiting, channel)
+}
+
+func (waitReco *DecoReco) getStatus() bool {
+	waitReco.Lock()
+	defer waitReco.Unlock()
+	return waitReco.isConnected
+}
+
+func (waitReco *DecoReco) setStatus(status bool) {
+	waitReco.Lock()
+	defer waitReco.Unlock()
+	waitReco.isConnected = false
 }

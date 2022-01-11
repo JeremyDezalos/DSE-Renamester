@@ -147,6 +147,8 @@ type configTemplate struct {
 	paxosThreshold     func(uint) int
 	paxosID            uint
 	paxosProposerRetry time.Duration
+
+	NumberOfMissedHeartbeatsBeforeDisconnection uint
 }
 
 func newConfigTemplate() configTemplate {
@@ -181,6 +183,7 @@ func newConfigTemplate() configTemplate {
 		},
 		paxosID:            0,
 		paxosProposerRetry: time.Second * 5,
+		NumberOfMissedHeartbeatsBeforeDisconnection: 0,
 	}
 }
 
@@ -290,6 +293,12 @@ func WithPaxosProposerRetry(d time.Duration) Option {
 	}
 }
 
+func WithHeartbeatTimeout(t uint) Option {
+	return func(ct *configTemplate) {
+		ct.NumberOfMissedHeartbeatsBeforeDisconnection = t
+	}
+}
+
 // NewTestNode returns a new test node.
 func NewTestNode(t *testing.T, f peer.Factory, trans transport.Transport,
 	addr string, opts ...Option) TestNode {
@@ -317,6 +326,7 @@ func NewTestNode(t *testing.T, f peer.Factory, trans transport.Transport,
 	config.PaxosThreshold = template.paxosThreshold
 	config.PaxosID = template.paxosID
 	config.PaxosProposerRetry = template.paxosProposerRetry
+	config.Transport = trans
 
 	node := f(config)
 

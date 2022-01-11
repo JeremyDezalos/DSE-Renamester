@@ -2,7 +2,7 @@ export GLOG = warn
 export BINLOG = warn
 export HTTPLOG = warn
 
-test: test_hw0 test_hw1 test_hw2 test_hw3
+test: test_hw0 test_hw1 test_hw2 test_hw3 test_hw4
 
 xtest: setbin test
 
@@ -14,6 +14,7 @@ test_hw0: test_unit_hw0 test_int_hw0
 test_hw1: test_unit_hw1 test_int_hw1
 test_hw2: test_unit_hw2 test_int_hw2
 test_hw3: test_unit_hw3 test_int_hw3
+test_hw4: test_unit_hw4
 
 test_unit_hw0:
 	go test -v -race -run Test_HW0 ./peer/tests/unit
@@ -26,6 +27,9 @@ test_unit_hw2:
 
 test_unit_hw3:
 	go test -v -race -run Test_HW3 ./peer/tests/unit
+
+test_unit_hw4:
+	go test -v -race -run Test_HW4 ./peer/tests/unit
 
 test_int_hw0:
 	go test -timeout 40m -v -race -run Test_HW0 ./peer/tests/integration

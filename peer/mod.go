@@ -14,6 +14,7 @@ type Peer interface {
 	Service
 	Messaging
 	DataSharing
+	DecoReco
 }
 
 // Factory is the type of function we are using to create new instances of
