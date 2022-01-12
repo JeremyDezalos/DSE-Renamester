@@ -84,3 +84,8 @@ fct : reconnect():
 gui : ajouter un bouton deconnecter:
     appelle disconnect()
 
+mutex on socket
+
+NO MORE N.CONF.SOCKET.GETADDRESS: devient n.address
+
+mutex on n.address

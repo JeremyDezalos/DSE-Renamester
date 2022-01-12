@@ -35,9 +35,12 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 	n.stoped = make(chan struct{})
 	n.decoReco.isConnected = true
 	n.decoReco.waiting = make(map[chan struct{}]struct{})
+	n.socketMutex.Lock()
+	n.address.setAddress(n.conf.Socket.GetAddress())
+	n.socketMutex.Unlock()
 
 	// Add ourself to the list of peers
-	n.AddPeer(conf.Socket.GetAddress())
+	n.AddPeer(n.address.getAddress())
 
 	proposer := PaxosProposer{
 		Retry:        make(chan types.PaxosValue),
@@ -75,6 +78,7 @@ type node struct {
 	stoped   chan struct{}
 	paxos    Paxos
 	decoReco DecoReco
+	address  Address
 }
 
 type safeCounter struct {
@@ -184,7 +188,7 @@ func (n *node) Start() error {
 				prepare := types.PaxosPrepareMessage{
 					Step:   n.paxos.Step,
 					ID:     id,
-					Source: n.conf.Socket.GetAddress(),
+					Source: n.address.getAddress(),
 				}
 				msg, err := n.conf.MessageRegistry.MarshalMessage(prepare)
 				if err != nil {
@@ -215,7 +219,9 @@ func (n *node) Start() error {
 				}
 			default:
 				n.checkAndwaitReconnection()
+				n.socketMutex.Lock()
 				pkt, err := n.conf.Socket.Recv(time.Second * 1 / 5)
+				n.socketMutex.Unlock()
 				if errors.Is(err, transport.TimeoutErr(0)) {
 					log.Warn().Msgf("failed to receive packet (timeout): %v", err)
 					continue
@@ -225,7 +231,7 @@ func (n *node) Start() error {
 				} else {
 
 					// do something with the packet and the err
-					if n.conf.Socket.GetAddress() == pkt.Header.Destination {
+					if n.address.getAddress() == pkt.Header.Destination {
 						err = n.conf.MessageRegistry.ProcessPacket(pkt)
 						if err != nil {
 							log.Warn().Msgf("failed to process packet: %v", err)
@@ -233,14 +239,14 @@ func (n *node) Start() error {
 						}
 
 					} else {
-						pkt.Header.RelayedBy = n.conf.Socket.GetAddress()
+						pkt.Header.RelayedBy = n.address.getAddress()
 						// Probably not how to relay
 						nextHop, ok := n.lockedRoutingTable.get(pkt.Header.Destination)
 						if !ok {
 							log.Warn().Msgf("failed to relay packet: unknown address")
 						} else {
 
-							err = n.conf.Socket.Send(nextHop, pkt, time.Second*1)
+							err = n.sendPacketWithoutRoutingTable(nextHop, pkt, time.Second*1)
 							if err != nil {
 								log.Warn().Msgf("failed to relay packet: %v", err)
 								continue
@@ -260,6 +266,9 @@ func (n *node) Start() error {
 // Stop implements peer.Service
 func (n *node) Stop() error {
 	if n.started {
+		if !n.decoReco.getStatus() {
+			n.NotifyWaitingGoroutines()
+		}
 		n.stoped <- struct{}{}
 		if n.conf.AntiEntropyInterval > 0 {
 			n.antiAnthropySig.Stop()
@@ -267,15 +276,20 @@ func (n *node) Stop() error {
 		if n.conf.HeartbeatInterval > 0 {
 			n.heartbeatSig.Stop()
 		}
+		if n.decoReco.getStatus() {
+			n.NotifyWaitingGoroutines()
+		}
 	}
 	return nil
 }
 
 func (n *node) checkAndwaitReconnection() {
 	if !n.decoReco.getStatus() {
+		fmt.Println("waiting " + n.address.getAddress())
 		channel := make(chan struct{})
 		n.decoReco.setChannel(channel)
 		<-channel
+		fmt.Println("resuming " + n.address.getAddress())
 		n.decoReco.deleteChannel(channel)
 	}
 }

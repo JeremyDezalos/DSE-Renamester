@@ -1,6 +1,7 @@
 package impl
 
 import (
+	"fmt"
 	"sync"
 
 	"go.dedis.ch/cs438/types"
@@ -18,7 +19,9 @@ func (n *node) Disconnect() error {
 	}
 	n.Broadcast(deco)
 	n.decoReco.setStatus(false)
+	n.socketMutex.Lock()
 	n.conf.Socket.Close()
+	n.socketMutex.Unlock()
 	return nil
 }
 
@@ -30,12 +33,23 @@ func (n *node) Reconnect(address string) error {
 	if err != nil {
 		return err
 	}
+
+	n.socketMutex.Lock()
 	n.conf.Socket = socket
-	n.decoReco.setStatus(false)
-	for _, channel := range n.decoReco.getAllChannels() {
+	n.address.setAddress(n.conf.Socket.GetAddress())
+	n.socketMutex.Unlock()
+
+	n.decoReco.setStatus(true)
+	n.NotifyWaitingGoroutines()
+
+	return nil
+}
+
+func (n *node) NotifyWaitingGoroutines() {
+	fmt.Println("notifyign " + n.address.getAddress())
+	for channel := range n.decoReco.getAllChannels() {
 		channel <- struct{}{}
 	}
-	return nil
 }
 
 func (n *node) sendBackupNodes(address string, backupNodes []string) error {
@@ -85,7 +99,8 @@ func (n *node) sendNewNeighborsToPeers() error {
 }
 
 func (n *node) handleDisconnection(address string) {
-	_, isNeighbor := getNeighbors(n.lockedRoutingTable.routingTable)[address]
+	fmt.Println(address)
+	_, isNeighbor := getNeighbors(n.GetRoutingTable())[address]
 	n.lockedRoutingTable.delete(address)
 	n.messaging.missedHeartBeats.delete(address)
 	if isNeighbor {
@@ -163,12 +178,12 @@ type DecoReco struct {
 	waiting     map[chan struct{}]struct{}
 }
 
-func (waitReco *DecoReco) getAllChannels() []chan struct{} {
+func (waitReco *DecoReco) getAllChannels() map[chan struct{}]struct{} {
 	waitReco.Lock()
 	defer waitReco.Unlock()
-	channels := make([]chan struct{}, len(waitReco.waiting))
+	channels := make(map[chan struct{}]struct{})
 	for waiting := range waitReco.waiting {
-		channels = append(channels, waiting)
+		channels[waiting] = struct{}{}
 	}
 	return channels
 }
@@ -195,4 +210,21 @@ func (waitReco *DecoReco) setStatus(status bool) {
 	waitReco.Lock()
 	defer waitReco.Unlock()
 	waitReco.isConnected = false
+}
+
+type Address struct {
+	sync.Mutex
+	address string
+}
+
+func (a *Address) getAddress() string {
+	a.Lock()
+	defer a.Unlock()
+	return a.address
+}
+
+func (a *Address) setAddress(address string) {
+	a.Lock()
+	defer a.Unlock()
+	a.address = address
 }

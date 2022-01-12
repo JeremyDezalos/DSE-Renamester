@@ -2,6 +2,7 @@ package impl
 
 import (
 	"errors"
+	"sync"
 	"time"
 
 	"go.dedis.ch/cs438/peer"
@@ -25,6 +26,7 @@ type messaging struct {
 	searchesReceived   searchesReceived
 	backupNodes        BackupMap
 	missedHeartBeats   MissedHeartBeatCounter
+	socketMutex        sync.Mutex
 }
 
 func initMessaging(conf peer.Configuration) *messaging {
@@ -48,14 +50,14 @@ func initMessaging(conf peer.Configuration) *messaging {
 // Unicast implements peer.Messaging
 func (n *node) Unicast(dest string, msg transport.Message) error {
 	n.checkAndwaitReconnection()
-	selfAddr := n.conf.Socket.GetAddress()
+	selfAddr := n.address.getAddress()
 	header := transport.NewHeader(selfAddr, selfAddr, dest, 0)
 	pkt := transport.Packet{Header: &header, Msg: &msg}
 	neighbor, ok := n.lockedRoutingTable.get(dest)
 	if !ok {
 		return xerrors.Errorf("failed to send unicast message: unknown neighbor")
 	}
-	err := n.conf.Socket.Send(neighbor, pkt, time.Second*1)
+	err := n.sendPacketWithoutRoutingTable(neighbor, pkt, time.Second*1)
 	if err != nil {
 		return xerrors.Errorf("failed to send unicast message: %v", err)
 	}
@@ -64,7 +66,7 @@ func (n *node) Unicast(dest string, msg transport.Message) error {
 
 func (n *node) Broadcast(msg transport.Message) error {
 	n.checkAndwaitReconnection()
-	selfAddr := n.conf.Socket.GetAddress()
+	selfAddr := n.address.getAddress()
 	// Create RumorsMessage pkt and send it
 	seq := n.rumorSeq.incr()
 	rumor := types.Rumor{
@@ -130,7 +132,7 @@ func (n *node) GetRoutingTable() peer.RoutingTable {
 // SetRoutingEntry implements peer.Service
 func (n *node) SetRoutingEntry(origin, relayAddr string) {
 	// Make sure to keep our own address in the routing table
-	if origin != n.conf.Socket.GetAddress() {
+	if origin != n.address.getAddress() {
 		n.handleNewNode(origin, relayAddr)
 	}
 }
@@ -151,7 +153,7 @@ func (n *node) handleNewNode(origin string, relayAddr string) {
 
 // Generate status message and send it
 func (n *node) sendAntiAnthropy() error {
-	selfAddr := n.conf.Socket.GetAddress()
+	selfAddr := n.address.getAddress()
 	statusMsg := n.rumorsCollection.generateStatusMessage()
 	msg, err := n.conf.MessageRegistry.MarshalMessage(&statusMsg)
 	if err != nil {
@@ -189,7 +191,7 @@ func (n *node) waitForAck(pkt transport.Packet) error {
 			return nil
 		case <-t.C:
 			// Send to another
-			pkt.Header.Destination = getRandomNeighbor(n.GetRoutingTable(), n.conf.Socket.GetAddress(), pkt.Header.Destination)
+			pkt.Header.Destination = getRandomNeighbor(n.GetRoutingTable(), n.address.getAddress(), pkt.Header.Destination)
 			if pkt.Header.Destination != "" {
 				err := n.sendPacket(pkt)
 				if err != nil {
@@ -204,7 +206,9 @@ func (n *node) waitForAck(pkt transport.Packet) error {
 func (n *node) sendPacket(pkt transport.Packet) error {
 	dest, ok := n.lockedRoutingTable.get(pkt.Header.Destination)
 	if ok {
+		n.socketMutex.Lock()
 		err := n.conf.Socket.Send(dest, pkt, time.Second*1)
+		n.socketMutex.Unlock()
 		if errors.Is(err, transport.TimeoutErr(0)) {
 			return xerrors.Errorf("failed to send packet (timeout): %v", err)
 		} else if err != nil {
@@ -212,6 +216,18 @@ func (n *node) sendPacket(pkt transport.Packet) error {
 		}
 	} else {
 		return xerrors.Errorf("failed to resolve route to destination: %s", pkt.Header.Destination)
+	}
+	return nil
+}
+
+func (n *node) sendPacketWithoutRoutingTable(dest string, pkt transport.Packet, timeout time.Duration) error {
+	n.socketMutex.Lock()
+	defer n.socketMutex.Unlock()
+	err := n.conf.Socket.Send(dest, pkt, timeout)
+	if errors.Is(err, transport.TimeoutErr(0)) {
+		return xerrors.Errorf("failed to send packet (timeout): %v", err)
+	} else if err != nil {
+		return xerrors.Errorf("failed to send packet: %v", err)
 	}
 	return nil
 }
