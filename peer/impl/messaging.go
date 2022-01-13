@@ -139,7 +139,8 @@ func (n *node) SetRoutingEntry(origin, relayAddr string) {
 
 func (n *node) handleNewNode(origin string, relayAddr string) {
 	toRetransmit := true
-	if n.lockedRoutingTable.routingTable[origin] == relayAddr {
+	//don't retransmit if this is not new
+	if n.GetRoutingTable()[origin] == relayAddr {
 		toRetransmit = false
 	}
 	n.lockedRoutingTable.add(origin, relayAddr)
@@ -148,7 +149,9 @@ func (n *node) handleNewNode(origin string, relayAddr string) {
 		n.sendNewNeighborsToPeers()
 	}
 	//initializes the counter of missed heart beats
-	n.missedHeartBeats.setCounter(origin, 0)
+	if n.conf.NumberOfMissedHeartbeatsBeforeDisconnection > 0 {
+		n.missedHeartBeats.setCounter(origin, 0)
+	}
 }
 
 // Generate status message and send it

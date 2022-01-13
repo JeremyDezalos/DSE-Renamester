@@ -42,15 +42,15 @@ func (n *node) ExecRumorsMessage(msg types.Message, pkt transport.Packet) error 
 			Header: &newHeader,
 			Msg:    v.Msg,
 		}
-		err := n.conf.MessageRegistry.ProcessPacket(newPkt)
-		if err != nil {
-			return xerrors.Errorf("failed to process one of the expected rumor: %v", err)
-		}
 		// Update routing table
 		relay, _ := n.lockedRoutingTable.get(v.Origin)
 		// Don't remove neighbors!
 		if relay != v.Origin {
 			n.SetRoutingEntry(v.Origin, pkt.Header.RelayedBy)
+		}
+		err := n.conf.MessageRegistry.ProcessPacket(newPkt)
+		if err != nil {
+			return xerrors.Errorf("failed to process one of the expected rumor: %v", err)
 		}
 	}
 
@@ -694,6 +694,10 @@ func (n *node) ExecDisconnectMessage(msg types.Message, pkt transport.Packet) er
 	_, ok := msg.(*types.DisconnectMessage)
 	if !ok {
 		return xerrors.Errorf("wrong type: %T", msg)
+	}
+	fmt.Println(n.address.getAddress())
+	if n.address.getAddress() == pkt.Header.Source {
+		return nil
 	}
 	n.handleDisconnection(pkt.Header.Source)
 	return nil

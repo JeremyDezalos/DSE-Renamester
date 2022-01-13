@@ -17,7 +17,11 @@ func (n *node) Disconnect() error {
 	if err != nil {
 		return err
 	}
-	n.Broadcast(deco)
+
+	for neighbor := range n.GetRoutingTable() {
+		n.Unicast(neighbor, deco)
+	}
+
 	n.decoReco.setStatus(false)
 	n.socketMutex.Lock()
 	n.conf.Socket.Close()
@@ -46,7 +50,6 @@ func (n *node) Reconnect(address string) error {
 }
 
 func (n *node) NotifyWaitingGoroutines() {
-	fmt.Println("notifyign " + n.address.getAddress())
 	for channel := range n.decoReco.getAllChannels() {
 		channel <- struct{}{}
 	}
@@ -60,38 +63,44 @@ func (n *node) sendBackupNodes(address string, backupNodes []string) error {
 	if err != nil {
 		return err
 	}
-
 	return n.Unicast(address, toSend)
 }
 
 func (n *node) sendNewNeighborsToPeers() error {
 	neighbors := getNeighbors(n.GetRoutingTable())
-	list := make([]string, len(neighbors))
+	list := make([]string, len(neighbors)-1)
+	index := 0
+	fmt.Println(neighbors)
 	for neighbor := range neighbors {
-		list = append(list, neighbor)
+		if neighbor != n.address.getAddress() {
+			list[index] = neighbor
+			index++
+		}
 	}
-	for index, neighbor := range list {
-		if index == 0 {
-			backupNodes := make([]string, 1)
-			backupNodes = append(backupNodes, list[index+1])
-			err := n.sendBackupNodes(neighbor, backupNodes)
-			if err != nil {
-				return err
-			}
-		} else if index == len(list)-1 {
-			backupNodes := make([]string, 2)
-			backupNodes = append(backupNodes, list[index-1])
-			backupNodes = append(backupNodes, list[index+1])
-			err := n.sendBackupNodes(neighbor, backupNodes)
-			if err != nil {
-				return err
-			}
-		} else {
-			backupNodes := make([]string, 1)
-			backupNodes = append(backupNodes, list[index-1])
-			err := n.sendBackupNodes(neighbor, backupNodes)
-			if err != nil {
-				return err
+	if len(list) > 1 {
+		for index, neighbor := range list {
+			if index == 0 {
+				backupNodes := make([]string, 1)
+				backupNodes[0] = list[index+1]
+				err := n.sendBackupNodes(neighbor, backupNodes)
+				if err != nil {
+					return err
+				}
+			} else if index == len(list)-1 {
+				backupNodes := make([]string, 1)
+				backupNodes[0] = list[index-1]
+				err := n.sendBackupNodes(neighbor, backupNodes)
+				if err != nil {
+					return err
+				}
+			} else {
+				backupNodes := make([]string, 2)
+				backupNodes[0] = list[index-1]
+				backupNodes[1] = list[index+1]
+				err := n.sendBackupNodes(neighbor, backupNodes)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -99,18 +108,17 @@ func (n *node) sendNewNeighborsToPeers() error {
 }
 
 func (n *node) handleDisconnection(address string) {
-	fmt.Println(address)
 	_, isNeighbor := getNeighbors(n.GetRoutingTable())[address]
 	n.lockedRoutingTable.delete(address)
 	n.messaging.missedHeartBeats.delete(address)
 	if isNeighbor {
 		backupNeighbors, ok := n.backupNodes.getBackup(address)
+		fmt.Println(backupNeighbors)
 		if ok {
 			for _, newNeighbor := range backupNeighbors {
 				n.SetRoutingEntry(newNeighbor, newNeighbor)
 			}
 		}
-		n.sendNewNeighborsToPeers()
 	}
 }
 

@@ -162,13 +162,16 @@ func (n *node) Start() error {
 	if n.conf.NumberOfMissedHeartbeatsBeforeDisconnection > 0 {
 		n.heartbeatCheck = time.NewTicker(n.conf.HeartbeatInterval)
 		go func() {
-			n.checkAndwaitReconnection()
-			<-n.heartbeatCheck.C
-			for node, counter := range n.missedHeartBeats.getCounters() {
-				if counter+1 >= n.conf.NumberOfMissedHeartbeatsBeforeDisconnection {
-					n.handleDisconnection(node)
+			for {
+				n.checkAndwaitReconnection()
+				<-n.heartbeatCheck.C
+				for node, counter := range n.missedHeartBeats.getCounters() {
+					n.missedHeartBeats.setCounter(node, counter+1)
+					if counter >= n.conf.NumberOfMissedHeartbeatsBeforeDisconnection {
+						fmt.Println(n.address.getAddress() + ": sus")
+						n.handleDisconnection(node)
+					}
 				}
-				n.missedHeartBeats.setCounter(node, counter+1)
 			}
 		}()
 	}
@@ -245,7 +248,6 @@ func (n *node) Start() error {
 						if !ok {
 							log.Warn().Msgf("failed to relay packet: unknown address")
 						} else {
-
 							err = n.sendPacketWithoutRoutingTable(nextHop, pkt, time.Second*1)
 							if err != nil {
 								log.Warn().Msgf("failed to relay packet: %v", err)
@@ -275,6 +277,9 @@ func (n *node) Stop() error {
 		}
 		if n.conf.HeartbeatInterval > 0 {
 			n.heartbeatSig.Stop()
+		}
+		if n.conf.NumberOfMissedHeartbeatsBeforeDisconnection > 0 {
+			n.heartbeatCheck.Stop()
 		}
 		if n.decoReco.getStatus() {
 			n.NotifyWaitingGoroutines()

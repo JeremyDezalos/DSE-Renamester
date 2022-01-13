@@ -327,6 +327,7 @@ func NewTestNode(t *testing.T, f peer.Factory, trans transport.Transport,
 	config.PaxosID = template.paxosID
 	config.PaxosProposerRetry = template.paxosProposerRetry
 	config.Transport = trans
+	config.NumberOfMissedHeartbeatsBeforeDisconnection = template.NumberOfMissedHeartbeatsBeforeDisconnection
 
 	node := f(config)
 
