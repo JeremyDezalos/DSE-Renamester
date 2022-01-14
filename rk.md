@@ -1,6 +1,19 @@
 ## BS self reflections
 ----
 
+WARNING, TEST RELAYING WITH MORE THAN ONE HOP (I might have broken it)
+ALSO, I think there is an issue in "ExecRumorMessage", because the internal rumor 
+use the RumorsMessage packet header information when processing single rumors, 
+I think they should use the "Origin" field inside the rumor instead 
+(and create a new header with it)
+
+signature is stored in the transport.Message, signature verification adds a 
+Valid field in packets (updated during "ProcessPacket")
+registry/standard/mod.go, MarshalMessage probably where we can sign?
+registry/standard/mod.go, ProcesPacket probably where we can verify signature?
+
+Some signing go well, others don't, e.g. status when embededd in ack
+
 Next step: add renaming
 
 Idea: change routing table (yeah... again) to have a mapping as follow

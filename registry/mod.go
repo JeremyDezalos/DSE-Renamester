@@ -9,6 +9,7 @@ import (
 // on the network. It also adds functions to get the activity and status of the
 // registry.
 type Registry interface {
+
 	// RegisterMessageCallback registers a function that will be executed for
 	// that particular type of message by the ProcessPacket function.
 	RegisterMessageCallback(types.Message, Exec)

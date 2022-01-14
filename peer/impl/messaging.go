@@ -1,6 +1,7 @@
 package impl
 
 import (
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"time"
@@ -63,6 +64,10 @@ func (n *node) Broadcast(msg transport.Message) error {
 		Sequence: seq,
 		Msg:      &msg,
 	}
+	// Signing self emited packets
+	sig := ed25519.Sign(n.privateKey, msg.Payload)
+	msg.Signature = sig
+
 	rumors := make([]types.Rumor, 1)
 	rumors[0] = rumor
 	n.rumorsCollection.addRumors(rumors)
@@ -265,13 +270,25 @@ func (n *node) waitForAck(pkt transport.Packet) error {
 }
 
 func (n *node) sendPacket(pkt transport.Packet) error {
-	dest, ok := n.lockedRoutingTable.resolveNeighbor(pkt.Header.Destination)
+	nextHop, ok := n.lockedRoutingTable.get(pkt.Header.Destination)
+	var dest string
 	if ok {
-		err := n.conf.Socket.Send(dest, pkt, time.Second*1)
-		if errors.Is(err, transport.TimeoutErr(0)) {
-			return xerrors.Errorf("failed to send packet (timeout): %v", err)
-		} else if err != nil {
-			return xerrors.Errorf("failed to send packet: %v", err)
+		dest, ok = n.lockedRoutingTable.resolveNeighbor(nextHop)
+	}
+	if ok {
+		if pkt.Header.Source == n.id {
+			// Signing self emited packets
+			sig := ed25519.Sign(n.privateKey, pkt.Msg.Payload)
+			pkt.Msg.Signature = sig
+		}
+
+		if ok {
+			err := n.conf.Socket.Send(dest, pkt, time.Second*1)
+			if errors.Is(err, transport.TimeoutErr(0)) {
+				return xerrors.Errorf("failed to send packet (timeout): %v", err)
+			} else if err != nil {
+				return xerrors.Errorf("failed to send packet: %v", err)
+			}
 		}
 	} else {
 		return xerrors.Errorf("failed to resolve route to destination: %s", pkt.Header.Destination)

@@ -243,18 +243,12 @@ func (n *node) Start() error {
 						}
 
 					} else {
+						// Relay
 						pkt.Header.RelayedBy = n.id
-						// Probably not how to relay
-						nextHop, ok := n.lockedRoutingTable.get(pkt.Header.Destination)
-						if !ok {
-							log.Warn().Msgf("failed to relay packet: unknown identity")
-						} else {
-
-							err = n.conf.Socket.Send(nextHop, pkt, time.Second*1)
-							if err != nil {
-								log.Warn().Msgf("failed to relay packet: %v", err)
-								continue
-							}
+						err = n.sendPacket(pkt)
+						if err != nil {
+							log.Warn().Msgf("failed to relay packet: %v", err)
+							continue
 						}
 
 					}
