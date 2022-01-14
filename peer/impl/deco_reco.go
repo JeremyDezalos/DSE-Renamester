@@ -54,7 +54,7 @@ func (n *node) NotifyWaitingGoroutines() {
 	}
 }
 
-func (n *node) sendBackupNodes(address string, backupNodes []string) error {
+func (n *node) sendBackupNodes(routingEntry types.RoutingTableEntry, backupNodes []types.RoutingTableEntry) error {
 	msg := types.NeighborsMessage{
 		Neighbors: backupNodes,
 	}
@@ -62,37 +62,35 @@ func (n *node) sendBackupNodes(address string, backupNodes []string) error {
 	if err != nil {
 		return err
 	}
-	return n.Unicast(address, toSend)
+	return n.Unicast(routingEntry.Address, toSend)
 }
 
 func (n *node) sendNewNeighborsToPeers() error {
-	neighbors := getNeighbors(n.GetRoutingTable())
-	list := make([]string, len(neighbors)-1)
-	index := 0
-	for neighbor := range neighbors {
-		if neighbor != n.address.getAddress() {
-			list[index] = neighbor
-			index++
+	everyone := n.lockedRoutingTable.getCopy()
+	list := make([]types.RoutingTableEntry, 0)
+	for origin, entry := range everyone {
+		if origin != n.id && origin == entry.NextHop {
+			list = append(list, entry)
 		}
 	}
 	if len(list) > 1 {
 		for index, neighbor := range list {
 			if index == 0 {
-				backupNodes := make([]string, 1)
+				backupNodes := make([]types.RoutingTableEntry, 1)
 				backupNodes[0] = list[index+1]
 				err := n.sendBackupNodes(neighbor, backupNodes)
 				if err != nil {
 					return err
 				}
 			} else if index == len(list)-1 {
-				backupNodes := make([]string, 1)
+				backupNodes := make([]types.RoutingTableEntry, 1)
 				backupNodes[0] = list[index-1]
 				err := n.sendBackupNodes(neighbor, backupNodes)
 				if err != nil {
 					return err
 				}
 			} else {
-				backupNodes := make([]string, 2)
+				backupNodes := make([]types.RoutingTableEntry, 2)
 				backupNodes[0] = list[index-1]
 				backupNodes[1] = list[index+1]
 				err := n.sendBackupNodes(neighbor, backupNodes)
@@ -105,15 +103,16 @@ func (n *node) sendNewNeighborsToPeers() error {
 	return nil
 }
 
-func (n *node) handleDisconnection(address string) {
-	_, isNeighbor := getNeighbors(n.GetRoutingTable())[address]
-	n.lockedRoutingTable.delete(address)
-	n.messaging.missedHeartBeats.delete(address)
+func (n *node) handleDisconnection(id string) {
+	_, isNeighbor := getNeighbors(n.GetRoutingTable())[id]
+	n.lockedRoutingTable.delete(id)
+	n.messaging.missedHeartBeats.delete(id)
 	if isNeighbor {
-		backupNeighbors, ok := n.backupNodes.getBackup(address)
+		backupNeighbors, ok := n.backupNodes.getBackup(id)
 		if ok {
 			for _, newNeighbor := range backupNeighbors {
-				n.SetRoutingEntry(newNeighbor, newNeighbor)
+
+				n.lockedRoutingTable.setEntry(newNeighbor.NextHop, newNeighbor.NextHop, newNeighbor.Address, newNeighbor.Alias)
 			}
 		}
 	}
@@ -121,17 +120,17 @@ func (n *node) handleDisconnection(address string) {
 
 type BackupMap struct {
 	sync.Mutex
-	backups map[string][]string
+	backups map[string][]types.RoutingTableEntry
 }
 
-func (backupMap *BackupMap) getBackup(key string) ([]string, bool) {
+func (backupMap *BackupMap) getBackup(key string) ([]types.RoutingTableEntry, bool) {
 	backupMap.Lock()
 	defer backupMap.Unlock()
 	val, ok := backupMap.backups[key]
 	return val, ok
 }
 
-func (backupMap *BackupMap) setBackup(key string, val []string) {
+func (backupMap *BackupMap) setBackup(key string, val []types.RoutingTableEntry) {
 	backupMap.Lock()
 	defer backupMap.Unlock()
 	backupMap.backups[key] = val

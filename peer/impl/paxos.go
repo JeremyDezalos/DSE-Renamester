@@ -71,7 +71,7 @@ func (n *node) RetryTag(name string, mh string) {
 		prepare := types.PaxosPrepareMessage{
 			Step:   n.paxos.Step,
 			ID:     id,
-			Source: n.address.getAddress(),
+			Source: n.id,
 		}
 		msg, err := n.conf.MessageRegistry.MarshalMessage(prepare)
 		if err == nil {

@@ -116,11 +116,23 @@ func (m messaging) peerPost(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "*")
 
-	m.node.AddPeer(res...)
+	err = m.node.AddPeer(res...)
+	if err != nil {
+		http.Error(w, "failed to add peers: "+err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (m messaging) routingGet(w http.ResponseWriter, r *http.Request) {
 	table := m.node.GetRoutingTable()
+	neighors := m.node.GetNeighborsTable()
+	alias := m.node.GetAliasTable()
+
+	// Create go object easily convertible to JSON
+	goToJson := struct {
+		N peer.RoutingTable
+		T map[string]string
+		A map[string]string
+	}{neighors, table, alias}
 
 	err := r.ParseForm()
 	if err != nil {
@@ -134,10 +146,24 @@ func (m messaging) routingGet(w http.ResponseWriter, r *http.Request) {
 	if r.Form.Get("graphviz") == "on" {
 		table.DisplayGraph(w)
 	} else {
+		// debugBuffer := new(bytes.Buffer)
+		// debugEnc := json.NewEncoder(debugBuffer)
+		// debugEnc.SetIndent("", "\t")
+		// err = debugEnc.Encode(&neighors)
+		// if err != nil {
+		// 	m.log.Info().Msgf("Encoding failed uwu\n")
+		// }
+		// fmt.Print(debugBuffer.String())
+		// err = debugEnc.Encode(&table)
+		// if err != nil {
+		// 	m.log.Info().Msgf("Encoding failed step 2 uwu\n")
+		// }
+		// fmt.Print(debugBuffer.String())
+
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "\t")
 
-		err = enc.Encode(&table)
+		err = enc.Encode(&goToJson)
 		if err != nil {
 			http.Error(w, "failed to marshal routing table", http.StatusInternalServerError)
 			return

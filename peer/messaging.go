@@ -31,7 +31,7 @@ type Messaging interface {
 	// routing table of the node. Adding ourself should have no effect.
 	//
 	// - implemented in HW0
-	AddPeer(addr ...string)
+	AddPeer(addr ...string) error
 
 	// GetRoutingTable returns the node's routing table. It should be a copy.
 	//
@@ -46,6 +46,12 @@ type Messaging interface {
 	//
 	// - implemented in HW0
 	SetRoutingEntry(origin, relayAddr string)
+
+	// GetNeighborsTable returns the node's neighbors table. It should be a copy.
+	GetNeighborsTable() map[string]string
+
+	// GetAliasTable returns the node's aliases table. It should be a copy.
+	GetAliasTable() map[string]string
 }
 
 // RoutingTable defines a simple next-hop routing table. The key is the origin

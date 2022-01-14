@@ -203,6 +203,7 @@ func start(c *urfave.Context) error {
 
 	conf := peer.Configuration{
 		Socket:          sock,
+		PrivateKey:      nil, // No private key by default
 		MessageRegistry: standard.NewRegistry(),
 
 		AntiEntropyInterval: c.Duration("antientropy"),

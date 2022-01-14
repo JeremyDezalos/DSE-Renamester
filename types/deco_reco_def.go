@@ -5,5 +5,5 @@ type DisconnectMessage struct{}
 
 //Defines a message that contains a list of neighbors in case the sender disconnects
 type NeighborsMessage struct {
-	Neighbors []string
+	Neighbors []RoutingTableEntry
 }

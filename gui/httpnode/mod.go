@@ -69,6 +69,7 @@ func NewHTTPNode(node peer.Peer, conf peer.Configuration) Proxy {
 	datasharingctrl := controller.NewDataSharing(node, &log)
 	blockchain := controller.NewBlockchain(conf, &log)
 
+	// mux.Handle("/messaging/rename", http.HandlerFunc(messagingctrl.NamingHandler()))
 	mux.Handle("/messaging/peers", http.HandlerFunc(messagingctrl.PeerHandler()))
 	mux.Handle("/messaging/routing", http.HandlerFunc(messagingctrl.RoutingHandler()))
 	mux.Handle("/messaging/unicast", http.HandlerFunc(messagingctrl.UnicastHandler()))

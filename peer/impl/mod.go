@@ -1,6 +1,8 @@
 package impl
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -28,8 +30,28 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 	// Therefore, you are free to rename and change it as you want.
 
 	n := node{conf: conf}
+
+	if conf.PrivateKey == nil {
+		var err error
+		var pubKey []byte
+		pubKey, n.privateKey, err = ed25519.GenerateKey(nil)
+		if err != nil {
+			panic("failed to generate keypairs, cannot recover")
+		}
+
+		n.id = base64.StdEncoding.EncodeToString(pubKey)
+	} else {
+		n.privateKey = conf.PrivateKey
+		pubKey, ok := conf.PrivateKey.Public().(ed25519.PublicKey)
+		if !ok {
+			panic("failed to generate public key from given private key, cannot recover")
+		}
+
+		n.id = base64.StdEncoding.EncodeToString(pubKey)
+	}
+
 	n.messaging = initMessaging(n.conf)
-	n.lockedRoutingTable.routingTable = make(peer.RoutingTable)
+	n.lockedRoutingTable.routingTable = make(map[string]types.RoutingTableEntry)
 	// Add ourself to the list of peers
 	n.started = false
 	n.stoped = make(chan struct{})
@@ -40,7 +62,9 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 	n.socketMutex.Unlock()
 
 	// Add ourself to the list of peers
-	n.AddPeer(n.address.getAddress())
+	// Should use SetRouting, this call block the node and it can't actually
+	// receive the id req/rep during call (although it's not an issue with http node)
+	n.lockedRoutingTable.setEntry(n.id, n.id, n.conf.Socket.GetAddress(), "That's you")
 
 	proposer := PaxosProposer{
 		Retry:        make(chan types.PaxosValue),
@@ -67,12 +91,15 @@ func NewPeer(conf peer.Configuration) peer.Peer {
 }
 
 // node implements a peer to build a Peerster system
-//
+//RoutingTable
 // - implements peer.Peer
 type node struct {
 	peer.Peer
 	// You probably want to keep the peer.Configuration on this struct:
 	conf peer.Configuration
+	id   string // string type for compatibility with previous routing table
+	// And ease of use in UI
+	privateKey ed25519.PrivateKey
 	*messaging
 	started  bool
 	stoped   chan struct{}
@@ -109,6 +136,10 @@ func (c *safeCounter) get() uint {
 func (n *node) Start() error {
 	n.started = true
 	// Register callbacks
+	n.conf.MessageRegistry.RegisterMessageCallback(types.IdRequestMessage{}, n.ExecIdRequestMessage)
+	n.conf.MessageRegistry.RegisterMessageCallback(types.IdReplyMessage{}, n.ExecIdReplyMessage)
+	n.conf.MessageRegistry.RegisterMessageCallback(types.RenameMessage{}, n.ExecRenameMessage)
+
 	n.conf.MessageRegistry.RegisterMessageCallback(types.ChatMessage{}, n.ExecChatMessage)
 	n.conf.MessageRegistry.RegisterMessageCallback(types.RumorsMessage{}, n.ExecRumorsMessage)
 	n.conf.MessageRegistry.RegisterMessageCallback(types.StatusMessage{}, n.ExecStatusMessage)
@@ -190,7 +221,7 @@ func (n *node) Start() error {
 				prepare := types.PaxosPrepareMessage{
 					Step:   n.paxos.Step,
 					ID:     id,
-					Source: n.address.getAddress(),
+					Source: n.id,
 				}
 				msg, err := n.conf.MessageRegistry.MarshalMessage(prepare)
 				if err != nil {
@@ -233,7 +264,7 @@ func (n *node) Start() error {
 				} else {
 
 					// do something with the packet and the err
-					if n.address.getAddress() == pkt.Header.Destination {
+					if n.id == pkt.Header.Destination || pkt.Header.Destination == "" { // "" -> Special case for identity requests
 						err = n.conf.MessageRegistry.ProcessPacket(pkt)
 						if err != nil {
 							log.Warn().Msgf("failed to process packet: %v", err)
@@ -241,17 +272,12 @@ func (n *node) Start() error {
 						}
 
 					} else {
-						pkt.Header.RelayedBy = n.address.getAddress()
-						// Probably not how to relay
-						nextHop, ok := n.lockedRoutingTable.get(pkt.Header.Destination)
-						if !ok {
-							log.Warn().Msgf("failed to relay packet: unknown address")
-						} else {
-							err = n.sendPacketWithoutRoutingTable(nextHop, pkt, time.Second*1)
-							if err != nil {
-								log.Warn().Msgf("failed to relay packet: %v", err)
-								continue
-							}
+						// Relay
+						pkt.Header.RelayedBy = n.id
+						err = n.sendPacket(pkt)
+						if err != nil {
+							log.Warn().Msgf("failed to relay packet: %v", err)
+							continue
 						}
 
 					}

@@ -1,6 +1,8 @@
 package standard
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"reflect"
 	"sync"
@@ -43,6 +45,17 @@ func (r *Registry) RegisterMessageCallback(m types.Message, exec registry.Exec) 
 
 // ProcessPacket implements registry.Registry.
 func (r *Registry) ProcessPacket(pkt transport.Packet) error {
+	// Messages do not have to be signed, but will be flagged as invalid if they are not
+	if pkt.Msg.Signature == nil {
+		pkt.Valid = false
+	} else {
+		pubKey, err := base64.StdEncoding.DecodeString(pkt.Header.Source)
+		if err != nil {
+			return xerrors.Errorf("failed to decode base64 public key: %v", err)
+		}
+		pkt.Valid = ed25519.Verify(pubKey, pkt.Msg.Payload, pkt.Msg.Signature)
+	}
+
 	msg, err := registry.GlobalRegistry.GetMessage(pkt.Msg)
 	if err != nil {
 		return xerrors.Errorf("failed to get message: %v", err)
@@ -101,10 +114,10 @@ func (r *Registry) MarshalMessage(msg types.Message) (transport.Message, error) 
 	if err != nil {
 		return transport.Message{}, xerrors.Errorf("failed to marshal: %v", err)
 	}
-
 	return transport.Message{
-		Type:    msg.Name(),
-		Payload: buf,
+		Type:      msg.Name(),
+		Payload:   buf,
+		Signature: nil,
 	}, nil
 }
 

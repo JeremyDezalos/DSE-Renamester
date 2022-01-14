@@ -94,6 +94,9 @@ type Packet struct {
 	Header *Header
 
 	Msg *Message
+
+	// Tells if a packet received (or broadcasted) is valid
+	Valid bool
 }
 
 // Marshal transforms a packet to something that can be sent over the network.
@@ -178,8 +181,9 @@ func (h Header) HTML() string {
 // a json marshalled representation of a types.Message, and Type the
 // corresponding message name, available with types.Message.Name().
 type Message struct {
-	Type    string
-	Payload json.RawMessage
+	Type      string
+	Payload   json.RawMessage
+	Signature []byte
 }
 
 // Copy returns a copy of the message

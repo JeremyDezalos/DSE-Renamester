@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"crypto/ed25519"
 	"time"
 
 	"go.dedis.ch/cs438/registry"
@@ -24,7 +25,14 @@ type Factory func(Configuration) Peer
 // Configuration if the struct that will contain the configuration argument when
 // creating a peer. This struct will evolve.
 type Configuration struct {
-	Socket          transport.Socket
+	Socket transport.Socket
+
+	// Private key of a peer, used to sign messages so that other can verifiy
+	// their authenticity. A new key is generated at peer creation if no key
+	// is given.
+	// Default: nil
+	PrivateKey ed25519.PrivateKey
+
 	MessageRegistry registry.Registry
 	Transport       transport.Transport
 
