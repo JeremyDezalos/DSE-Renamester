@@ -1,7 +1,6 @@
 package impl
 
 import (
-	"fmt"
 	"sync"
 
 	"go.dedis.ch/cs438/types"
@@ -70,7 +69,6 @@ func (n *node) sendNewNeighborsToPeers() error {
 	neighbors := getNeighbors(n.GetRoutingTable())
 	list := make([]string, len(neighbors)-1)
 	index := 0
-	fmt.Println(neighbors)
 	for neighbor := range neighbors {
 		if neighbor != n.address.getAddress() {
 			list[index] = neighbor
@@ -113,7 +111,6 @@ func (n *node) handleDisconnection(address string) {
 	n.messaging.missedHeartBeats.delete(address)
 	if isNeighbor {
 		backupNeighbors, ok := n.backupNodes.getBackup(address)
-		fmt.Println(backupNeighbors)
 		if ok {
 			for _, newNeighbor := range backupNeighbors {
 				n.SetRoutingEntry(newNeighbor, newNeighbor)

@@ -168,7 +168,6 @@ func (n *node) Start() error {
 				for node, counter := range n.missedHeartBeats.getCounters() {
 					n.missedHeartBeats.setCounter(node, counter+1)
 					if counter >= n.conf.NumberOfMissedHeartbeatsBeforeDisconnection {
-						fmt.Println(n.address.getAddress() + ": sus")
 						n.handleDisconnection(node)
 					}
 				}

@@ -695,7 +695,7 @@ func (n *node) ExecDisconnectMessage(msg types.Message, pkt transport.Packet) er
 	if !ok {
 		return xerrors.Errorf("wrong type: %T", msg)
 	}
-	fmt.Println(n.address.getAddress())
+
 	if n.address.getAddress() == pkt.Header.Source {
 		return nil
 	}

@@ -149,7 +149,7 @@ func (n *node) handleNewNode(origin string, relayAddr string) {
 		n.sendNewNeighborsToPeers()
 	}
 	//initializes the counter of missed heart beats
-	if n.conf.NumberOfMissedHeartbeatsBeforeDisconnection > 0 {
+	if n.conf.NumberOfMissedHeartbeatsBeforeDisconnection > 0 && origin != n.address.getAddress() {
 		n.missedHeartBeats.setCounter(origin, 0)
 	}
 }
