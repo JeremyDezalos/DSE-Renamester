@@ -75,7 +75,6 @@ func (s deco_reco) connectionStatusPost(w http.ResponseWriter, r *http.Request) 
 
 func (s deco_reco) getPrivateKey(w http.ResponseWriter, r *http.Request) {
 	key := s.node.GetPrivateKey()
-
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "*")
 

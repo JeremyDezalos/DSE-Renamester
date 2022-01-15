@@ -1,5 +1,9 @@
 ## BS self reflections
 ----
+List test:
+Create node with existing private key
+Verify signatures of random in packets
+
 
 Clearly need a better disconnect/reconnect, 
 Need to fetch (GET) status from peer (diconnected or connected), then act accordingly
@@ -135,3 +139,14 @@ List of places where a `n.conf.Socket.Send(...)` (bypassing routing) was replace
 - ExecRumorMessage
 - ExecStatusMessage (x2)
 - ExecSearchRequestMessage
+
+
+## Mail
+
+Thank you so much for your phase 2 submission. It really improved a lot compared to the phase 1 submission, and I enjoyed reading it.
+
+One thing missing is how to split the work. Please ensure it is as fair as possible and every member should contribute something to the core part of the algorithm. This needs to be mentioned in the final presentation and report.
+
+Since this project is not too different from the existing homework and it does not need to measure performance, we would expect you to have extensive testings (including at least one stress test) to ensure that the functions you implement are correct. You can take inspiration from the extensive test suites of the homework.
+
+You get the approval of the proposal. Go ahead and good luck!
