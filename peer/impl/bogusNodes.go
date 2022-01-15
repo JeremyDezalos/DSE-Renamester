@@ -84,7 +84,7 @@ func NoWrongSignPeer(conf peer.Configuration) peer.Peer {
 	n.id = "lolWHOCaresAboutAuthenticity"
 
 	n.messaging = initMessaging(n.conf)
-	n.lockedRoutingTable.routingTable = make(map[string]RoutingTableEntry)
+	n.lockedRoutingTable.routingTable = make(map[string]types.RoutingTableEntry)
 	// Add ourself to the list of peers
 	n.started = false
 	n.stoped = make(chan struct{})

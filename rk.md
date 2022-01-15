@@ -1,6 +1,21 @@
 ## BS self reflections
 ----
 
+Clearly need a better disconnect/reconnect, 
+Need to fetch (GET) status from peer (diconnected or connected), then act accordingly
+(POST connect or POST disconnect)
+When reconnecting, also need to fetch peerInfo (new address) after success
+
+Verify behavior
+Add a disconnect, reconnect button
+
+Add more node information (private key (and pub key eventually))
+(Add private key option on connection)
+
+Verify behavior
+Then, add removal of disconnected node for non-neighbors
+
+
 WARNING, TEST RELAYING WITH MORE THAN ONE HOP (I might have broken it)
 ALSO, I think there is an issue in "ExecRumorMessage", because the internal rumor 
 use the RumorsMessage packet header information when processing single rumors, 

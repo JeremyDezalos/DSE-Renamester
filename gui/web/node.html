@@ -13,9 +13,11 @@
     </div>
 
     <h1>Peerster <sup>EPFL - DEDIS - CS438</sup></h1>
-    <table data-controller="peerInfo" id="peerInfo" class="peer-info">
+    <table data-controller="peerInfo connection" id="peerInfo" class="peer-info">
         <tr><td>Proxy address</td><td data-peerInfo-target="peerAddr"></td></tr>
         <tr><td>Socket address</td><td data-peerInfo-target="socketAddr"></td></tr>
+        <tr><td>Socket address</td><td data-peerInfo-target="socketAddr"></td></tr>
+        <tr ><td><button id="connectionButton" data-action="click->connection#toggle">Disconnect</button></td></tr>
     </table>
 
     <div data-controller="messaging" id="messaging" class="messaging">

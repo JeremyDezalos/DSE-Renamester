@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -62,12 +63,16 @@ func NewHTTPNode(node peer.Peer, conf peer.Configuration) Proxy {
 
 	mux := http.NewServeMux()
 
+	initialAddr := strings.Split(conf.Socket.GetAddress(), ":")[0]
 	messagingctrl := controller.NewMessaging(node, &log)
 	socketctrl := controller.NewSocketCtrl(conf.Socket, &log)
+	connectionStatusctrl := controller.NewConnectionStatusCtrl(node, initialAddr, &socketctrl, &log)
 	registryctrl := controller.NewRegistryCtrl(conf.MessageRegistry, &log)
 	servicectrl := controller.NewServiceCtrl(node, &log)
 	datasharingctrl := controller.NewDataSharing(node, &log)
 	blockchain := controller.NewBlockchain(conf, &log)
+
+	mux.Handle("/connection/status", http.HandlerFunc(connectionStatusctrl.ConnectionStatusHandler()))
 
 	// mux.Handle("/messaging/rename", http.HandlerFunc(messagingctrl.NamingHandler()))
 	mux.Handle("/messaging/peers", http.HandlerFunc(messagingctrl.PeerHandler()))

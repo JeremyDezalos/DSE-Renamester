@@ -21,7 +21,11 @@ type socketctrl struct {
 	log    *zerolog.Logger
 }
 
-func (s socketctrl) InsHandler() http.HandlerFunc {
+func (s *socketctrl) updateSocket(socket transport.ClosableSocket) {
+	s.socket = socket
+}
+
+func (s *socketctrl) InsHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "forbidden method", http.StatusMethodNotAllowed)
@@ -32,7 +36,7 @@ func (s socketctrl) InsHandler() http.HandlerFunc {
 	}
 }
 
-func (s socketctrl) OutsHandler() http.HandlerFunc {
+func (s *socketctrl) OutsHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "forbidden method", http.StatusMethodNotAllowed)
@@ -43,7 +47,7 @@ func (s socketctrl) OutsHandler() http.HandlerFunc {
 	}
 }
 
-func (s socketctrl) AddressHandler() http.HandlerFunc {
+func (s *socketctrl) AddressHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "forbidden method", http.StatusMethodNotAllowed)
@@ -54,7 +58,7 @@ func (s socketctrl) AddressHandler() http.HandlerFunc {
 	}
 }
 
-func (s socketctrl) insGet(w http.ResponseWriter, r *http.Request) {
+func (s *socketctrl) insGet(w http.ResponseWriter, r *http.Request) {
 	ins := s.socket.GetIns()
 
 	buf, err := json.Marshal(&ins)
@@ -66,7 +70,7 @@ func (s socketctrl) insGet(w http.ResponseWriter, r *http.Request) {
 	w.Write(buf)
 }
 
-func (s socketctrl) outsGet(w http.ResponseWriter, r *http.Request) {
+func (s *socketctrl) outsGet(w http.ResponseWriter, r *http.Request) {
 	outs := s.socket.GetOuts()
 
 	buf, err := json.Marshal(&outs)
@@ -78,7 +82,7 @@ func (s socketctrl) outsGet(w http.ResponseWriter, r *http.Request) {
 	w.Write(buf)
 }
 
-func (s socketctrl) addressGet(w http.ResponseWriter, r *http.Request) {
+func (s *socketctrl) addressGet(w http.ResponseWriter, r *http.Request) {
 	addr := s.socket.GetAddress()
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")

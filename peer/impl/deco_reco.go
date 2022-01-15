@@ -3,6 +3,7 @@ package impl
 import (
 	"sync"
 
+	"go.dedis.ch/cs438/transport"
 	"go.dedis.ch/cs438/types"
 	"golang.org/x/xerrors"
 )
@@ -28,13 +29,13 @@ func (n *node) Disconnect() error {
 	return nil
 }
 
-func (n *node) Reconnect(address string) error {
+func (n *node) Reconnect(address string) (transport.ClosableSocket, error) {
 	if n.decoReco.isConnected {
-		return xerrors.Errorf("node already connected")
+		return nil, xerrors.Errorf("node already connected")
 	}
 	socket, err := n.conf.Transport.CreateSocket(address)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	n.socketMutex.Lock()
@@ -42,10 +43,17 @@ func (n *node) Reconnect(address string) error {
 	n.address.setAddress(n.conf.Socket.GetAddress())
 	n.socketMutex.Unlock()
 
+	n.lockedRoutingTable.routingTable = make(map[string]types.RoutingTableEntry)
+	n.lockedRoutingTable.setEntry(n.id, n.id, n.conf.Socket.GetAddress(), "That's you")
+
 	n.decoReco.setStatus(true)
 	n.NotifyWaitingGoroutines()
 
-	return nil
+	return socket, nil
+}
+
+func (n *node) GetConnectionStatus() bool {
+	return n.decoReco.isConnected
 }
 
 func (n *node) NotifyWaitingGoroutines() {
@@ -213,7 +221,7 @@ func (waitReco *DecoReco) getStatus() bool {
 func (waitReco *DecoReco) setStatus(status bool) {
 	waitReco.Lock()
 	defer waitReco.Unlock()
-	waitReco.isConnected = false
+	waitReco.isConnected = status
 }
 
 type Address struct {

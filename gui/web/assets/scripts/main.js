@@ -15,6 +15,7 @@ const main = function () {
 
     application.register("flash", Flash);
     application.register("peerInfo", PeerInfo);
+    application.register("connection", ConnectionStatus);
     application.register("messaging", Messaging);
     application.register("unicast", Unicast);
     application.register("routing", Routing);
@@ -171,6 +172,20 @@ class PeerInfo extends Stimulus.Controller {
         }
     }
 
+    async update() {
+
+        const addr = this.getAPIURL("/socket/address");
+        try {
+            const resp = await fetch(addr);
+            const text = await resp.text();
+
+            this.socketAddrTarget.innerText = "tcp://" + text;
+            this.socketAddr = text;
+        } catch (e) {
+            this.flash.printError("failed to fetch socket address: " + e);
+        }
+    }
+
     getAPIURL(suffix) {
         return this.endpoint + suffix;
     }
@@ -188,6 +203,42 @@ class PeerInfo extends Stimulus.Controller {
         });
 
         return queryDict;
+    }
+}
+
+class ConnectionStatus extends BaseElement {
+    initialize() {
+        this.status = true
+    }
+
+    static get targets() {
+        return [];
+    }
+
+    async toggle() {
+
+        const addr = this.peerInfo.getAPIURL("/connection/status");
+        const fetchArgs = {
+            method: "POST",
+        }
+        try{
+            const resp = await this.fetch(addr, fetchArgs)
+            const status = await resp.text()
+            const connectionButton = document.getElementById("connectionButton")
+            if (status == "disconnected") {
+                this.flash.printSuccess("Successfully disconnected");
+                connectionButton.innerHTML = "Reconnect"
+                this.peerInfo.socketAddrTarget.innerText = "disconnected";
+            } else {
+                this.flash.printSuccess("Successfully reconnected");
+                this.peerInfo.update()
+                connectionButton.innerHTML = "Disconnect"
+            }
+
+        } catch(e) {
+            this.flash.printError("Failed to change connection status: " + e);
+            
+        }
     }
 }
 

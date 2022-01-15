@@ -205,6 +205,7 @@ func start(c *urfave.Context) error {
 		Socket:          sock,
 		PrivateKey:      nil, // No private key by default
 		MessageRegistry: standard.NewRegistry(),
+		Transport:       trans,
 
 		AntiEntropyInterval: c.Duration("antientropy"),
 		HeartbeatInterval:   c.Duration("heartbeat"),
