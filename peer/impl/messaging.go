@@ -2,6 +2,7 @@ package impl
 
 import (
 	"crypto/ed25519"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"sync"
@@ -179,6 +180,10 @@ func (n *node) AddPeer(addr ...string) error {
 	//keeping the neighbors updated
 	n.sendNewNeighborsToPeers()
 	return aggregateErr
+}
+
+func (n *node) GetPrivateKey() string {
+	return base64.StdEncoding.EncodeToString(n.privateKey)
 }
 
 // GetRoutingTable implements peer.Service

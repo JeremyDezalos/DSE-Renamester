@@ -2,6 +2,8 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -78,6 +80,11 @@ func main() {
 						Name:  "nodeaddr",
 						Usage: "addr of the node",
 						Value: "127.0.0.1:0",
+					},
+					&urfave.StringFlag{
+						Name:  "privateKey",
+						Usage: "private key",
+						Value: "",
 					},
 					&urfave.DurationFlag{
 						Name:  "antientropy",
@@ -201,9 +208,20 @@ func start(c *urfave.Context) error {
 		return xerrors.Errorf("if total peers is set PaxosID must be set, too")
 	}
 
+	var privateKey ed25519.PrivateKey
+	b64key := c.String("privateKey")
+	if b64key == "" {
+		privateKey = nil
+	} else {
+		privateKey, err = base64.StdEncoding.DecodeString(b64key)
+		if err != nil {
+			return xerrors.Errorf("failed to decode private key")
+		}
+	}
+
 	conf := peer.Configuration{
 		Socket:          sock,
-		PrivateKey:      nil, // No private key by default
+		PrivateKey:      privateKey, // No private key by default
 		MessageRegistry: standard.NewRegistry(),
 		Transport:       trans,
 

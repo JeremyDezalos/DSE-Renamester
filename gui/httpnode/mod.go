@@ -73,6 +73,7 @@ func NewHTTPNode(node peer.Peer, conf peer.Configuration) Proxy {
 	blockchain := controller.NewBlockchain(conf, &log)
 
 	mux.Handle("/connection/status", http.HandlerFunc(connectionStatusctrl.ConnectionStatusHandler()))
+	mux.Handle("/connection/privateKey", http.HandlerFunc(connectionStatusctrl.PrivateKeyHandler()))
 
 	// mux.Handle("/messaging/rename", http.HandlerFunc(messagingctrl.NamingHandler()))
 	mux.Handle("/messaging/peers", http.HandlerFunc(messagingctrl.PeerHandler()))

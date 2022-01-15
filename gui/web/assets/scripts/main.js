@@ -147,7 +147,7 @@ class Flash extends Stimulus.Controller {
 
 class PeerInfo extends Stimulus.Controller {
     static get targets() {
-        return ["peerAddr", "socketAddr"];
+        return ["peerAddr", "socketAddr", "privateKey"];
     }
 
     async initialize() {
@@ -164,7 +164,7 @@ class PeerInfo extends Stimulus.Controller {
         try {
             const resp = await fetch(addr);
             const text = await resp.text();
-
+        
             this.socketAddrTarget.innerText = "tcp://" + text;
             this.socketAddr = text;
         } catch (e) {
@@ -207,12 +207,23 @@ class PeerInfo extends Stimulus.Controller {
 }
 
 class ConnectionStatus extends BaseElement {
-    initialize() {
-        this.status = true
+    static get targets() {
+        return ["privateKey"];
     }
 
-    static get targets() {
-        return [];
+    async initialize() {
+
+        const addr = this.peerInfo.getAPIURL("/connection/privateKey");
+        try{
+            const resp = await this.fetch(addr)
+            const key = await resp.text()
+            
+            this.privateKeyTarget.innerHTML = key
+
+        } catch(e) {
+            this.flash.printError("Failed fetch private key: " + e);
+            
+        }
     }
 
     async toggle() {

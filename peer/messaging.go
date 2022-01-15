@@ -33,6 +33,8 @@ type Messaging interface {
 	// - implemented in HW0
 	AddPeer(addr ...string) error
 
+	GetPrivateKey() string
+
 	// GetRoutingTable returns the node's routing table. It should be a copy.
 	//
 	// - implemented in HW0
