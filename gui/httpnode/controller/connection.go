@@ -40,16 +40,6 @@ func (s deco_reco) ConnectionStatusHandler() http.HandlerFunc {
 	}
 }
 
-func (s deco_reco) PrivateKeyHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "forbidden method", http.StatusMethodNotAllowed)
-			return
-		}
-		s.getPrivateKey(w, r)
-	}
-}
-
 func (s deco_reco) connectionStatusPost(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "*")
@@ -71,12 +61,4 @@ func (s deco_reco) connectionStatusPost(w http.ResponseWriter, r *http.Request) 
 		s.log.Info().Msgf("new addr: %s\n", socket.GetAddress())
 		w.Write([]byte("connected"))
 	}
-}
-
-func (s deco_reco) getPrivateKey(w http.ResponseWriter, r *http.Request) {
-	key := s.node.GetPrivateKey()
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Headers", "*")
-
-	w.Write([]byte(key))
 }

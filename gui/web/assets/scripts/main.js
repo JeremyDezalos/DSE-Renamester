@@ -211,21 +211,6 @@ class ConnectionStatus extends BaseElement {
         return ["privateKey"];
     }
 
-    async initialize() {
-
-        const addr = this.peerInfo.getAPIURL("/connection/privateKey");
-        try{
-            const resp = await this.fetch(addr)
-            const key = await resp.text()
-            
-            this.privateKeyTarget.innerHTML = key
-
-        } catch(e) {
-            this.flash.printError("Failed fetch private key: " + e);
-            
-        }
-    }
-
     async toggle() {
 
         const addr = this.peerInfo.getAPIURL("/connection/status");
