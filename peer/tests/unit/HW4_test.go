@@ -224,7 +224,7 @@ func Test_HW4_node_broadcast_and_unicast_with_hop_correctly_sign(t *testing.T) {
 	if err != nil {
 		panic("could not generate keypair")
 	}
-	_, privKey2, err := ed25519.GenerateKey(nil)
+	pubKey2, privKey2, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		panic("could not generate keypair")
 	}
@@ -244,7 +244,7 @@ func Test_HW4_node_broadcast_and_unicast_with_hop_correctly_sign(t *testing.T) {
 
 	time.Sleep(time.Second * 1)
 	chatMsg := types.ChatMessage{
-		Message: "HelloM9!",
+		Message: "HelloM8!",
 	}
 	msg, err := node1.GetRegistry().MarshalMessage(chatMsg)
 	if err != nil {
@@ -264,83 +264,70 @@ func Test_HW4_node_broadcast_and_unicast_with_hop_correctly_sign(t *testing.T) {
 	}
 	err = node3.Broadcast(msg3)
 	require.NoError(t, err, "Failed broadcast from node3")
-	time.Sleep(time.Millisecond * 20)
+	time.Sleep(time.Millisecond * 200)
 
-	// fmt.Printf("Node1 INS\n")
-
-	// for _, pkt := range node1.GetIns() {
-
-	// 	fmt.Printf("%s\nMessage:%s\n", pkt.Header, pkt.Msg)
-	// }
-
-	// fmt.Printf("Node1 OUTS\n")
-
-	// for _, pkt := range node1.GetOuts() {
-
-	// 	fmt.Printf("%s\nMessage:%s\n", pkt.Header, pkt.Msg)
-	// }
-
-	// fmt.Printf("Node2 INS\n")
-
-	// for _, pkt := range node2.GetIns() {
-
-	// 	fmt.Printf("%s\nMessage:%s\n", pkt.Header, pkt.Msg)
-	// }
-
-	// fmt.Printf("Node2 OUTS\n")
-
-	// for _, pkt := range node2.GetOuts() {
-
-	// 	fmt.Printf("%s\nMessage:%s\n", pkt.Header, pkt.Msg)
-	// }
-
-	// fmt.Printf("%s\n%s\n", node3.GetRoutingTable(), node3.GetNeighborsTable())
-
-	// for _, pkt := range node3.GetOuts() {
-
-	// 	fmt.Printf("%s\nMessage:%s\n", pkt.Header, pkt.Msg)
-	// }
-
-	// fmt.Printf("%s\n%s\n", node2.GetRoutingTable(), node2.GetNeighborsTable())
-	// fmt.Printf("Node2 INS\n")
-
-	// for _, pkt := range node2.GetIns() {
-
-	// 	fmt.Printf("%s\nMessage:%s\n", pkt.Header, pkt.Msg)
-	// }
-
-	// fmt.Printf("Node2 OUTS\n")
-
-	// for _, pkt := range node2.GetOuts() {
-
-	// 	fmt.Printf("%s\nMessage:%s\n", pkt.Header, pkt.Msg)
-	// }
-	// fmt.Printf("%s\n%s\n", node1.GetRoutingTable(), node1.GetNeighborsTable())
-	// for _, pkt := range node1.GetIns() {
-
-	// 	fmt.Printf("%s\nMessage:%s\n", pkt.Header, pkt.Msg)
-	// }
-
+	chatMsgUni := types.ChatMessage{
+		Message: "HelloM8!",
+	}
+	msgUni, err := node1.GetRegistry().MarshalMessage(chatMsgUni)
+	if err != nil {
+		panic("could not marshal chat msg")
+	}
 	// Sending one hop away
 	b64pubKey3 := base64.StdEncoding.EncodeToString(pubKey3)
-	err = node1.Unicast(b64pubKey3, msg)
+	err = node1.Unicast(b64pubKey3, msgUni)
+	time.Sleep(time.Millisecond * 200)
+
+	b64pubKey2 := base64.StdEncoding.EncodeToString(pubKey2)
+
+	b64pubKey1 := base64.StdEncoding.EncodeToString(pubKey1)
+
 	require.NoError(t, err, "Failed unicast")
 
 	for _, pkt := range node1.GetOuts() {
-
 		if pkt.Msg.Type != "idRequest" {
 			require.True(t, ed25519.Verify(pubKey1, pkt.Msg.Payload, pkt.Msg.Signature))
 		}
 	}
-	for _, pkt := range node2.GetIns() {
+	// Verify Signature validity of all in going packets
+	for _, pkt := range node1.GetIns() {
+
 		if pkt.Msg.Type != "idRequest" {
-			require.True(t, ed25519.Verify(pubKey1, pkt.Msg.Payload, pkt.Msg.Signature))
+			if pkt.Header.Source == b64pubKey2 {
+				require.True(t, ed25519.Verify(pubKey2, pkt.Msg.Payload, pkt.Msg.Signature))
+			} else if pkt.Header.Source == b64pubKey3 {
+				require.True(t, ed25519.Verify(pubKey3, pkt.Msg.Payload, pkt.Msg.Signature))
+			}
+		}
+	}
+	for _, pkt := range node2.GetIns() {
+		// Check who sent!!! (with pkt.Header) to know which pubkey to use
+		if pkt.Msg.Type != "idRequest" {
+			// fmt.Printf("type: %s\nPayload: %s\n sig: %v\n", pkt.Msg.Type, pkt.Msg.Payload, pkt.Msg.Signature)
+			if pkt.Header.Source == b64pubKey1 {
+				require.True(t, ed25519.Verify(pubKey1, pkt.Msg.Payload, pkt.Msg.Signature))
+			} else if pkt.Header.Source == b64pubKey3 {
+				require.True(t, ed25519.Verify(pubKey3, pkt.Msg.Payload, pkt.Msg.Signature))
+			}
 		}
 	}
 	for _, pkt := range node3.GetIns() {
 		if pkt.Msg.Type != "idRequest" {
-			require.True(t, ed25519.Verify(pubKey1, pkt.Msg.Payload, pkt.Msg.Signature))
+			// fmt.Printf("Type: %s\nPayload: %s\nSig: %v\n", pkt.Msg.Type, pkt.Msg.Payload, pkt.Msg.Signature)
+			if pkt.Header.Source == b64pubKey1 {
+				require.True(t, ed25519.Verify(pubKey1, pkt.Msg.Payload, pkt.Msg.Signature))
+			} else if pkt.Header.Source == b64pubKey2 {
+				require.True(t, ed25519.Verify(pubKey2, pkt.Msg.Payload, pkt.Msg.Signature))
+			}
 		}
 	}
 
 }
+
+// func Test_HW4_node_broadcast_rename(t *testing.T) {
+// 	fail
+// }
+
+// func Test_HW4_node_unicast_rename(t *testing.T) {
+// 	fail
+// }
