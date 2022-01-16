@@ -216,9 +216,9 @@ func (n *node) ExecStatusMessage(msg types.Message, pkt transport.Packet) error 
 		}
 	}
 
-	fmt.Printf("Self status: %s\n", selfStatus)
-	fmt.Printf("Remote status: %s\n", remoteStatus)
-	fmt.Printf("Sending: %s\n\n", missingRumors)
+	// fmt.Printf("Self status: %s\n", selfStatus)
+	// fmt.Printf("Remote status: %s\n", remoteStatus)
+	// fmt.Printf("Sending: %s\n\n", missingRumors)
 
 	if len(missingRumors) > 0 {
 
