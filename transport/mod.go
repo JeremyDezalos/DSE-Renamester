@@ -189,8 +189,9 @@ type Message struct {
 // Copy returns a copy of the message
 func (m Message) Copy() Message {
 	return Message{
-		Type:    m.Type,
-		Payload: append([]byte{}, m.Payload...),
+		Type:      m.Type,
+		Payload:   append([]byte{}, m.Payload...),
+		Signature: append([]byte{}, m.Signature...),
 	}
 }
 

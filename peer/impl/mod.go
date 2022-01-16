@@ -19,7 +19,7 @@ var logout = zerolog.ConsoleWriter{
 	Out:        os.Stdout,
 	TimeFormat: time.RFC3339,
 }
-var log = zerolog.New(logout).Level(zerolog.ErrorLevel).
+var log = zerolog.New(logout).Level(zerolog.WarnLevel).
 	With().Timestamp().Logger().
 	With().Caller().Logger()
 
@@ -256,7 +256,7 @@ func (n *node) Start() error {
 				pkt, err := n.conf.Socket.Recv(time.Second * 1 / 5)
 				n.socketMutex.Unlock()
 				if errors.Is(err, transport.TimeoutErr(0)) {
-					log.Warn().Msgf("failed to receive packet (timeout): %v", err)
+					log.Info().Msgf("failed to receive packet (timeout): %v", err)
 					continue
 				} else if err != nil {
 					log.Warn().Msgf("failed to receive packet: %v", err)
@@ -265,9 +265,10 @@ func (n *node) Start() error {
 
 					// do something with the packet and the err
 					if n.id == pkt.Header.Destination || pkt.Header.Destination == "" { // "" -> Special case for identity requests
+
 						err = n.conf.MessageRegistry.ProcessPacket(pkt)
 						if err != nil {
-							log.Warn().Msgf("failed to process packet: %v", err)
+							log.Warn().Msgf("failed to process packet with type %s: %v ", pkt.Msg.Type, err)
 							continue
 						}
 

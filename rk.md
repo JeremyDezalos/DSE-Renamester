@@ -1,8 +1,14 @@
 ## BS self reflections
 ----
-List test:
-Create node with existing private key
-Verify signatures of random in packets
+Unit tests:
+- Create node with existing private key
+- Verify signatures of random "ins" packets
+- Three nodes test
+- Stress test
+
+
+Manual GUI tests:
+- 
 
 
 Clearly need a better disconnect/reconnect, 

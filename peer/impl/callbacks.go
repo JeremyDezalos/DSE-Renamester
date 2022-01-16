@@ -96,7 +96,11 @@ func (n *node) ExecRumorsMessage(msg types.Message, pkt transport.Packet) error 
 	}
 
 	// Add expected rumors to collection and process them
+	// fmt.Printf("Received rumors: %s\n", rumorsMessage.Rumors)
+	// fmt.Printf("Old status: %s\n", n.rumorsCollection.generateStatusMessage())
 	acceptedRumors := n.rumorsCollection.addRumors(rumorsMessage.Rumors)
+	// fmt.Printf("New status: %s\n", n.rumorsCollection.generateStatusMessage())
+
 	for _, v := range acceptedRumors {
 		newHeader := transport.NewHeader(pkt.Header.Source, pkt.Header.RelayedBy, pkt.Header.Destination, 0)
 		newPkt := transport.Packet{
@@ -211,6 +215,11 @@ func (n *node) ExecStatusMessage(msg types.Message, pkt transport.Packet) error 
 			missingRumors = append(missingRumors, n.rumorsCollection.getRumors(sk, 1)...)
 		}
 	}
+
+	fmt.Printf("Self status: %s\n", selfStatus)
+	fmt.Printf("Remote status: %s\n", remoteStatus)
+	fmt.Printf("Sending: %s\n\n", missingRumors)
+
 	if len(missingRumors) > 0 {
 
 		missingRumorsMsg := types.RumorsMessage{
@@ -750,7 +759,7 @@ func (n *node) ExecDisconnectMessage(msg types.Message, pkt transport.Packet) er
 		return xerrors.Errorf("wrong type: %T", msg)
 	}
 
-	if n.address.getAddress() == pkt.Header.Source {
+	if n.id == pkt.Header.Source {
 		return nil
 	}
 	n.handleDisconnection(pkt.Header.Source)

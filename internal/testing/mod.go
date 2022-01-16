@@ -2,6 +2,7 @@ package testing
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -128,6 +129,8 @@ type configTemplate struct {
 
 	registry registry.Registry
 
+	privateKey ed25519.PrivateKey
+
 	withWatcher bool
 	autoStart   bool
 
@@ -160,6 +163,8 @@ func newConfigTemplate() configTemplate {
 		handlers: make([]registry.Exec, 0),
 
 		registry: standard.NewRegistry(),
+
+		privateKey: nil,
 
 		AntiEntropyInterval: 0,
 		HeartbeatInterval:   0,
@@ -209,6 +214,13 @@ func WithMessage(m types.Message, handler registry.Exec) Option {
 func WithMessageRegistry(r registry.Registry) Option {
 	return func(ct *configTemplate) {
 		ct.registry = r
+	}
+}
+
+// WithMessageRegistry sets a specific message registry. Used to pass a proxy registry.
+func WithPrivateKey(pk ed25519.PrivateKey) Option {
+	return func(ct *configTemplate) {
+		ct.privateKey = pk
 	}
 }
 
@@ -315,6 +327,7 @@ func NewTestNode(t *testing.T, f peer.Factory, trans transport.Transport,
 
 	config.Socket = socket
 	config.MessageRegistry = template.registry
+	config.PrivateKey = template.privateKey
 	config.AntiEntropyInterval = template.AntiEntropyInterval
 	config.HeartbeatInterval = template.HeartbeatInterval
 	config.ContinueMongering = template.ContinueMongering

@@ -40,6 +40,7 @@ func initMessaging(conf peer.Configuration) *messaging {
 	m := messaging{}
 	m.lockedRoutingTable.routingTable = make(map[string]types.RoutingTableEntry)
 	m.waitedIdReplies = make(chan string, 5)
+	m.rumorSeq.reset()
 	// Arbitratry length queue, should avoid to much goroutine spinning
 	m.rumorsCollection.lockedRumors = make(map[string][]types.Rumor)
 	m.waitedAck.waitingChan = make(map[string](chan struct{}))
@@ -73,7 +74,7 @@ func (n *node) Broadcast(msg transport.Message) error {
 		Sequence: seq,
 		Msg:      &msg,
 	}
-	// Signing self emited packets
+	// Signing rumor
 	sig := ed25519.Sign(n.privateKey, msg.Payload)
 	msg.Signature = sig
 
@@ -278,7 +279,7 @@ func (n *node) waitForAck(pkt transport.Packet) error {
 			return nil
 		case <-t.C:
 			// Send to another
-			pkt.Header.Destination = getRandomNeighbor(n.GetRoutingTable(), n.address.getAddress(), pkt.Header.Destination)
+			pkt.Header.Destination = getRandomNeighbor(n.GetRoutingTable(), n.id, pkt.Header.Destination)
 			if pkt.Header.Destination != "" {
 				err := n.sendPacket(pkt)
 				if err != nil {

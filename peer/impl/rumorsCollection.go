@@ -26,7 +26,9 @@ func (rumorsCollection *rumorsCollection) addRumors(rumors []types.Rumor) []type
 		if ok {
 			expected = uint(len(currRumors) + 1)
 		} else {
-			rumorsCollection.lockedRumors[rumor.Origin] = make([]types.Rumor, 0, 10)
+			if rumor.Sequence == 1 {
+				rumorsCollection.lockedRumors[rumor.Origin] = make([]types.Rumor, 0, 10)
+			}
 		}
 		if rumor.Sequence == expected {
 			rumorsCollection.lockedRumors[rumor.Origin] = append(currRumors, rumor)
