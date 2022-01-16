@@ -232,9 +232,9 @@ func Test_HW4_node_broadcast_and_unicast_with_hop_correctly_sign(t *testing.T) {
 	if err != nil {
 		panic("could not generate keypair")
 	}
-	node1 := z.NewTestNode(t, peerFac, transp, "127.0.0.1:15", z.WithHeartbeat(time.Second*1), z.WithPrivateKey(privKey1))
-	node2 := z.NewTestNode(t, peerFac, transp, "127.0.0.1:16", z.WithHeartbeat(time.Second*1), z.WithPrivateKey(privKey2))
-	node3 := z.NewTestNode(t, peerFac, transp, "127.0.0.1:17", z.WithHeartbeat(time.Second*1), z.WithPrivateKey(privKey3))
+	node1 := z.NewTestNode(t, peerFac, transp, "127.0.0.1:18", z.WithHeartbeat(time.Second*1), z.WithPrivateKey(privKey1))
+	node2 := z.NewTestNode(t, peerFac, transp, "127.0.0.1:19", z.WithHeartbeat(time.Second*1), z.WithPrivateKey(privKey2))
+	node3 := z.NewTestNode(t, peerFac, transp, "127.0.0.1:20", z.WithHeartbeat(time.Second*1), z.WithPrivateKey(privKey3))
 
 	err = node1.AddPeer(node2.GetAddr())
 	require.NoError(t, err, "Node1 failed add node2")
@@ -246,7 +246,7 @@ func Test_HW4_node_broadcast_and_unicast_with_hop_correctly_sign(t *testing.T) {
 	chatMsg := types.ChatMessage{
 		Message: "HelloM8!",
 	}
-	msg, err := node1.GetRegistry().MarshalMessage(chatMsg)
+	msg, err := node1.GetRegistry().MarshalMessage(&chatMsg)
 	if err != nil {
 		panic("could not marshal chat msg")
 	}
@@ -258,18 +258,22 @@ func Test_HW4_node_broadcast_and_unicast_with_hop_correctly_sign(t *testing.T) {
 	chatMsg3 := types.ChatMessage{
 		Message: "HelloM9!",
 	}
-	msg3, err := node3.GetRegistry().MarshalMessage(chatMsg3)
+	msg3, err := node3.GetRegistry().MarshalMessage(&chatMsg3)
 	if err != nil {
 		panic("could not marshal chat msg")
 	}
 	err = node3.Broadcast(msg3)
 	require.NoError(t, err, "Failed broadcast from node3")
-	time.Sleep(time.Millisecond * 200)
+	time.Sleep(time.Millisecond * 2000)
+
+	// fmt.Printf("n1 routing\n%s\n", node1.GetRoutingTable())
+	// fmt.Printf("n2 routing\n%s\n", node2.GetRoutingTable())
+	// fmt.Printf("n3 routing\n%s\n", node3.GetRoutingTable())
 
 	chatMsgUni := types.ChatMessage{
 		Message: "HelloM8!",
 	}
-	msgUni, err := node1.GetRegistry().MarshalMessage(chatMsgUni)
+	msgUni, err := node1.GetRegistry().MarshalMessage(&chatMsgUni)
 	if err != nil {
 		panic("could not marshal chat msg")
 	}
@@ -324,10 +328,75 @@ func Test_HW4_node_broadcast_and_unicast_with_hop_correctly_sign(t *testing.T) {
 
 }
 
-// func Test_HW4_node_broadcast_rename(t *testing.T) {
-// 	fail
-// }
+func Test_HW4_node_broadcast_rename(t *testing.T) {
+	transp := channel.NewTransport()
+	node1 := z.NewTestNode(t, peerFac, transp, "127.0.0.1:21")
+	node2 := z.NewTestNode(t, peerFac, transp, "127.0.0.1:22")
+	node1.AddPeer(node2.GetAddr())
+	renameMsg := types.RenameMessage{
+		Alias: "new",
+	}
+	msg, err := node1.GetRegistry().MarshalMessage(&renameMsg)
+	require.NoError(t, err, "failed to marshal")
+	node1.Broadcast(msg)
+	time.Sleep(time.Millisecond * 20)
+	names := make([]string, 0)
+	for _, v := range node2.GetAliasTable() {
+		// fmt.Printf("%s\n", v)
+		names = append(names, v)
+	}
+	require.Contains(t, names, "new")
 
-// func Test_HW4_node_unicast_rename(t *testing.T) {
-// 	fail
-// }
+}
+
+func Test_HW4_node_unicast_rename(t *testing.T) {
+	transp := channel.NewTransport()
+	node1 := z.NewTestNode(t, peerFac, transp, "127.0.0.1:21")
+	node2 := z.NewTestNode(t, peerFac, transp, "127.0.0.1:22")
+	node3 := z.NewTestNode(t, peerFac, transp, "127.0.0.1:23")
+
+	node1.AddPeer(node2.GetAddr())
+	node2.AddPeer(node3.GetAddr())
+	time.Sleep(time.Millisecond * 20)
+
+	// Replace heartbeat (node1 and 3 have to discover each others)
+	emptyMsg := types.EmptyMessage{}
+	empty, err := node3.GetRegistry().MarshalMessage(&emptyMsg)
+	require.NoError(t, err, "failed to marshal")
+	node3.Broadcast(empty)
+	empty, err = node1.GetRegistry().MarshalMessage(&emptyMsg)
+	require.NoError(t, err, "failed to marshal")
+	node1.Broadcast(empty)
+
+	time.Sleep(time.Millisecond * 20)
+
+	renameMsg := types.RenameMessage{
+		Alias: "new",
+	}
+	msg, err := node1.GetRegistry().MarshalMessage(&renameMsg)
+	require.NoError(t, err, "failed to marshal")
+
+	b64privKey, err := base64.StdEncoding.DecodeString(node3.GetPrivateKey())
+	privKey := ed25519.PrivateKey(b64privKey)
+	require.NoError(t, err, "failed to decode key")
+	pubKey, ok := privKey.Public().(ed25519.PublicKey)
+	if !ok {
+		panic("failed to generate public key from given private key, cannot recover")
+	}
+	id3 := base64.StdEncoding.EncodeToString(pubKey)
+	node1.Unicast(id3, msg)
+	time.Sleep(time.Millisecond * 20)
+	names := make([]string, 0)
+	for _, v := range node2.GetAliasTable() {
+		// fmt.Printf("%s\n", v)
+		names = append(names, v)
+	}
+	require.NotContains(t, names, "new")
+
+	names = make([]string, 0)
+	for _, v := range node3.GetAliasTable() {
+		// fmt.Printf("%s\n", v)
+		names = append(names, v)
+	}
+	require.Contains(t, names, "new")
+}

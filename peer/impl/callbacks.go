@@ -140,7 +140,7 @@ func (n *node) ExecRumorsMessage(msg types.Message, pkt transport.Packet) error 
 	// err = n.conf.Socket.Send(pkt.Header.Source, ackPkt, time.Second*1)
 	err = n.sendPacket(ackPkt)
 	if err != nil {
-		return xerrors.Errorf("failed to send packet: %v", err)
+		return xerrors.Errorf("failed to send packet (ack): %v", err)
 	}
 
 	// Forward the RumorMessage to another random neighbor if one of the rumor was expected
