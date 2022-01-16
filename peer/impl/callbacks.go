@@ -102,6 +102,7 @@ func (n *node) ExecRumorsMessage(msg types.Message, pkt transport.Packet) error 
 	// fmt.Printf("New status: %s\n", n.rumorsCollection.generateStatusMessage())
 
 	for _, v := range acceptedRumors {
+		// Ici v.Origin ou pkt.Header.Source??
 		newHeader := transport.NewHeader(pkt.Header.Source, pkt.Header.RelayedBy, pkt.Header.Destination, 0)
 		newPkt := transport.Packet{
 			Header: &newHeader,
