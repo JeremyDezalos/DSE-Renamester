@@ -12,6 +12,35 @@ import (
 	"go.dedis.ch/cs438/types"
 )
 
+func Test_HW4_reconnect_without_disconnecting(t *testing.T) {
+	transp := channel.NewTransport()
+
+	node1 := z.NewTestNode(t, peerFac, transp, "127.0.0.1:10000")
+	defer node1.Stop()
+
+	time.Sleep(time.Second * 1)
+
+	_, err := node1.Reconnect("127.0.0.1:20000")
+	require.Error(t, err)
+
+	time.Sleep(time.Second * 1)
+}
+
+func Test_HW4_disconnecting_twice(t *testing.T) {
+	transp := channel.NewTransport()
+
+	node1 := z.NewTestNode(t, peerFac, transp, "127.0.0.1:10000")
+	defer node1.Stop()
+
+	time.Sleep(time.Second * 1)
+	err := node1.Disconnect()
+	require.NoError(t, err)
+	time.Sleep(time.Second * 1)
+	err = node1.Disconnect()
+	require.Error(t, err)
+
+}
+
 //A lone node disconnecting then reconnecting should give no errors
 func Test_HW4_disconnect_then_reconnect(t *testing.T) {
 	transp := channel.NewTransport()
